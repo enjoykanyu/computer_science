@@ -211,5 +211,24 @@ def find_max(numbers):
 """
 ```
 
+
+
+### skill
+skill：<font style="color:rgb(66, 66, 66);">A simple, open format for giving agents new capabilities and expertise.（来源于</font>[https://agentskills.io/home](https://agentskills.io/home) 介绍<font style="color:rgb(66, 66, 66);">）</font>
+
+<font style="color:rgb(66, 66, 66);">一种简单、开放的格式，用于为智能体赋予新功能和专业知识。</font>
+
+<font style="color:rgb(66, 66, 66);">技能是一系列指令、脚本和资源的文件夹，智能体可以发现和使用这些内容，</font><font style="color:rgb(34, 34, 34);">Agent 可以按需发现和使用这些 Skill 来扩展自身能力。</font><font style="color:rgb(66, 66, 66);">以更准确、高效地完成任务</font>
+
+<font style="color:rgb(34, 34, 34);"> Skill 的核心是一个 </font>`<font style="color:rgb(34, 34, 34);background-color:rgba(0, 0, 0, 0.05);">SKILL.md</font>`<font style="color:rgb(34, 34, 34);"> 文件，包含元数据（至少需要 name 和 description）和指导 Agent 执行特定任务的说明。</font>
+
+
+
+
+
+
+
+
+
 # langchain框架
 # langgraph框架
