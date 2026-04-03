@@ -224,6 +224,186 @@ skill：<font style="color:rgb(66, 66, 66);">A simple, open format for giving ag
 
 
 
+main.go
+
+```go
+
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "os"
+    "path/filepath"
+
+    "github.com/cloudwego/eino-ext/adk/backend/local"
+    "github.com/cloudwego/eino-ext/components/model/ollama"
+
+    "github.com/cloudwego/eino/adk"
+    "github.com/cloudwego/eino/adk/middlewares/filesystem"
+    "github.com/cloudwego/eino/adk/middlewares/skill"
+
+    "github.com/cloudwego/eino-examples/adk/common/prints"
+)
+
+func main() {
+    ctx := context.Background()
+    pwd, _ := os.Getwd()
+    workDir := filepath.Join(pwd, "adk", "middlewares", "skill", "workdir")
+    skillsDir := filepath.Join(workDir, "skills")
+
+    cm, err := ollama.NewChatModel(ctx, &ollama.ChatModelConfig{
+        BaseURL: "http://localhost:11434", // Ollama 服务地址
+        Model:   "qwen3:0.7b",             // 模型名称
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    be, err := local.NewBackend(ctx, &local.Config{})
+    if err != nil {
+        log.Fatal(err)
+    }
+    fsm, err := filesystem.New(ctx, &filesystem.MiddlewareConfig{
+        Backend:        be,
+        StreamingShell: be,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    skillBackend, err := skill.NewBackendFromFilesystem(ctx, &skill.BackendFromFilesystemConfig{
+        Backend: be,
+        BaseDir: skillsDir,
+    })
+    if err != nil {
+        log.Fatalf("Failed to create skill backend: %v", err)
+    }
+
+    sm, err := skill.NewMiddleware(ctx, &skill.Config{
+        Backend: skillBackend,
+    })
+    if err != nil {
+        log.Fatalf("Failed to create skill middleware: %v", err)
+    }
+
+    agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+        Name:        "LogAnalysisAgent",
+        Description: "An agent that can analyze logs",
+        Instruction: "You are a helpful assistant.",
+        Model:       cm,
+        Handlers:    []adk.ChatModelAgentMiddleware{fsm, sm},
+    })
+    if err != nil {
+        log.Fatalf("Failed to create agent: %v", err)
+    }
+    runner := adk.NewRunner(ctx, adk.RunnerConfig{
+        Agent: agent,
+    })
+
+    input := fmt.Sprintf("Analyze the %s file", filepath.Join(workDir, "test.log"))
+    log.Println("User: ", input)
+
+    iterator := runner.Query(ctx, input)
+    for {
+        event, ok := iterator.Next()
+        if !ok {
+            break
+        }
+        if event.Err != nil {
+            log.Printf("Error: %v\n", event.Err)
+            break
+        }
+
+        prints.Event(event)
+    }
+}
+
+```
+
+analyze.py
+
+```python
+import sys
+import os
+
+def analyze_log(file_path):
+    if not os.path.exists(file_path):
+        print(f"Error: File '{file_path}' not found.")
+        return
+
+    error_count = 0
+    warning_count = 0
+    error_lines = []
+    warning_lines = []
+
+    try:
+        with open(file_path, 'r') as f:
+            for i, line in enumerate(f, 1):
+                content = line.strip()
+                if "ERROR" in content:
+                    error_count += 1
+                    error_lines.append(f"Line {i}: {content}")
+                elif "WARNING" in content:
+                    warning_count += 1
+                    warning_lines.append(f"Line {i}: {content}")
+
+        print(f"Analysis Result for {file_path}:")
+        print(f"Total Errors: {error_count}")
+        print(f"Total Warnings: {warning_count}")
+
+        if error_count > 0:
+            print("\nError Details:")
+            for line in error_lines:
+                print(line)
+
+        if warning_count > 0:
+            print("\nWarning Details:")
+            for line in warning_lines:
+                print(line)
+
+    except Exception as e:
+        print(f"An error occurred while reading the file: {e}")
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python3 analyze.py <log_file_path>")
+    else:
+        analyze_log(sys.argv[1])
+```
+
+skill.md
+
+```markdown
+---
+name: log_analyzer
+description: A skill to analyze log files for errors and warnings using a Python script.
+---
+
+# Log Analyzer Skill
+
+This skill analyzes a log file to count the occurrences of "ERROR" and "WARNING" and lists the lines where they appear.
+
+## Capability
+
+The skill provides a Python script named `analyze.py` located in this directory. You can use this script to analyze any text file.
+
+## Usage
+
+To use this skill, execute the `analyze.py` script with the target log file as an argument.
+
+### Example
+
+```bash
+python3 {{.BaseDirectory}}/scripts/analyze.py /path/to/logfile.log
+```
+**Note**: Replace `/path/to/logfile.log` with the actual path of the file you want to analyze.
+```
+
+
+
+
 
 
 
