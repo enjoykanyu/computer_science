@@ -224,185 +224,287 @@ skill：<font style="color:rgb(66, 66, 66);">A simple, open format for giving ag
 
 
 
-main.go
 
-```go
-
-package main
-
-import (
-    "context"
-    "fmt"
-    "log"
-    "os"
-    "path/filepath"
-
-    "github.com/cloudwego/eino-ext/adk/backend/local"
-    "github.com/cloudwego/eino-ext/components/model/ollama"
-
-    "github.com/cloudwego/eino/adk"
-    "github.com/cloudwego/eino/adk/middlewares/filesystem"
-    "github.com/cloudwego/eino/adk/middlewares/skill"
-
-    "github.com/cloudwego/eino-examples/adk/common/prints"
-)
-
-func main() {
-    ctx := context.Background()
-    pwd, _ := os.Getwd()
-    workDir := filepath.Join(pwd, "adk", "middlewares", "skill", "workdir")
-    skillsDir := filepath.Join(workDir, "skills")
-
-    cm, err := ollama.NewChatModel(ctx, &ollama.ChatModelConfig{
-        BaseURL: "http://localhost:11434", // Ollama 服务地址
-        Model:   "qwen3:0.7b",             // 模型名称
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    be, err := local.NewBackend(ctx, &local.Config{})
-    if err != nil {
-        log.Fatal(err)
-    }
-    fsm, err := filesystem.New(ctx, &filesystem.MiddlewareConfig{
-        Backend:        be,
-        StreamingShell: be,
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    skillBackend, err := skill.NewBackendFromFilesystem(ctx, &skill.BackendFromFilesystemConfig{
-        Backend: be,
-        BaseDir: skillsDir,
-    })
-    if err != nil {
-        log.Fatalf("Failed to create skill backend: %v", err)
-    }
-
-    sm, err := skill.NewMiddleware(ctx, &skill.Config{
-        Backend: skillBackend,
-    })
-    if err != nil {
-        log.Fatalf("Failed to create skill middleware: %v", err)
-    }
-
-    agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
-        Name:        "LogAnalysisAgent",
-        Description: "An agent that can analyze logs",
-        Instruction: "You are a helpful assistant.",
-        Model:       cm,
-        Handlers:    []adk.ChatModelAgentMiddleware{fsm, sm},
-    })
-    if err != nil {
-        log.Fatalf("Failed to create agent: %v", err)
-    }
-    runner := adk.NewRunner(ctx, adk.RunnerConfig{
-        Agent: agent,
-    })
-
-    input := fmt.Sprintf("Analyze the %s file", filepath.Join(workDir, "test.log"))
-    log.Println("User: ", input)
-
-    iterator := runner.Query(ctx, input)
-    for {
-        event, ok := iterator.Next()
-        if !ok {
-            break
-        }
-        if event.Err != nil {
-            log.Printf("Error: %v\n", event.Err)
-            break
-        }
-
-        prints.Event(event)
-    }
-}
-
-```
-
-analyze.py
-
+### agent第一章实践
+这里参考hello-agent
+前置需到 https://app.tavily.com/ 注册下拿到api key 
+这里采用了ollama部署，没有采用hello-agent的openAI格式
 ```python
-import sys
-import os
+import requests
 
-def analyze_log(file_path):
-    if not os.path.exists(file_path):
-        print(f"Error: File '{file_path}' not found.")
-        return
-
-    error_count = 0
-    warning_count = 0
-    error_lines = []
-    warning_lines = []
-
+def get_weather(city: str) -> str:
+    """
+    通过调用 wttr.in API 查询真实的天气信息。
+    """
+    # API端点，我们请求JSON格式的数据
+    url = f"https://wttr.in/{city}?format=j1"
+    
     try:
-        with open(file_path, 'r') as f:
-            for i, line in enumerate(f, 1):
-                content = line.strip()
-                if "ERROR" in content:
-                    error_count += 1
-                    error_lines.append(f"Line {i}: {content}")
-                elif "WARNING" in content:
-                    warning_count += 1
-                    warning_lines.append(f"Line {i}: {content}")
+        # 发起网络请求
+        response = requests.get(url)
+        # 检查响应状态码是否为200 (成功)
+        response.raise_for_status() 
+        # 解析返回的JSON数据
+        data = response.json()
+        
+        # 提取当前天气状况
+        current_condition = data['current_condition'][0]
+        weather_desc = current_condition['weatherDesc'][0]['value']
+        temp_c = current_condition['temp_C']
+        
+        # 格式化成自然语言返回
+        return f"{city}当前天气:{weather_desc}，气温{temp_c}摄氏度"
+        
+    except requests.exceptions.RequestException as e:
+        # 处理网络错误
+        return f"错误:查询天气时遇到网络问题 - {e}"
+    except (KeyError, IndexError) as e:
+        # 处理数据解析错误
+        return f"错误:解析天气数据失败，可能是城市名称无效 - {e}"
 
-        print(f"Analysis Result for {file_path}:")
-        print(f"Total Errors: {error_count}")
-        print(f"Total Warnings: {warning_count}")
+import os
+from tavily import TavilyClient
 
-        if error_count > 0:
-            print("\nError Details:")
-            for line in error_lines:
-                print(line)
+def get_attraction(city: str, weather: str) -> str:
+    """
+    根据城市和天气，使用Tavily Search API搜索并返回优化后的景点推荐。
+    """
+    # 1. 从环境变量中读取API密钥
+    api_key = os.environ.get("TAVILY_API_KEY")
+    if not api_key:
+        return "错误:未配置TAVILY_API_KEY环境变量。"
 
-        if warning_count > 0:
-            print("\nWarning Details:")
-            for line in warning_lines:
-                print(line)
+    # 2. 初始化Tavily客户端
+    tavily = TavilyClient(api_key=api_key)
+    
+    # 3. 构造一个精确的查询
+    query = f"'{city}' 在'{weather}'天气下最值得去的旅游景点推荐及理由"
+    
+    try:
+        # 4. 调用API，include_answer=True会返回一个综合性的回答
+        response = tavily.search(query=query, search_depth="basic", include_answer=True)
+        
+        # 5. Tavily返回的结果已经非常干净，可以直接使用
+        # response['answer'] 是一个基于所有搜索结果的总结性回答
+        if response.get("answer"):
+            return response["answer"]
+        
+        # 如果没有综合性回答，则格式化原始结果
+        formatted_results = []
+        for result in response.get("results", []):
+            formatted_results.append(f"- {result['title']}: {result['content']}")
+        
+        if not formatted_results:
+             return "抱歉，没有找到相关的旅游景点推荐。"
+
+        return "根据搜索，为您找到以下信息:\n" + "\n".join(formatted_results)
 
     except Exception as e:
-        print(f"An error occurred while reading the file: {e}")
+        return f"错误:执行Tavily搜索时出现问题 - {e}"
+
+# 将所有工具函数放入一个字典，方便后续调用 这里还没有调用的
+available_tools = {
+    "get_weather": get_weather,
+    "get_attraction": get_attraction,
+}
+print("✅ 工具注册完成（此时函数未被调用）")
+
+from openai import OpenAI
+
+class OpenAICompatibleClient:
+    """
+    一个用于调用任何兼容OpenAI接口的LLM服务的客户端。
+    """
+    def __init__(self, model: str, api_key: str, base_url: str):
+        self.model = model
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
+
+    def generate(self, prompt: str, system_prompt: str) -> str:
+        """调用LLM API来生成回应。"""
+        print("正在调用大语言模型...")
+        try:
+            messages = [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': prompt}
+            ]
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                stream=False
+            )
+            answer = response.choices[0].message.content
+            print("大语言模型响应成功。")
+            return answer
+        except Exception as e:
+            print(f"调用LLM API时发生错误: {e}")
+            return "错误:调用语言模型服务时出错。"
+
+
+import re
+from dotenv import load_dotenv
+
+# 加载.env文件中的环境变量
+load_dotenv()
+
+# --- 1. 配置LLM客户端 ---
+# 优先使用Ollama本地模型（如果可用）
+# Ollama提供OpenAI兼容API，运行在 http://localhost:11434/v1
+
+# 检测是否使用Ollama
+USE_OLLAMA = os.environ.get("USE_OLLAMA", "true").lower() == "true"
+
+if USE_OLLAMA:
+    # Ollama配置（本地运行，免费）
+    API_KEY = os.environ.get("OLLAMA_API_KEY", "ollama")  # Ollama不需要真实密钥
+    BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    MODEL_ID = os.environ.get("OLLAMA_MODEL", "qwen3:0.6b")  # 可选: deepseek-r1:8b, qwen3:1.7b
+    print(f"🦙 使用Ollama本地模型: {MODEL_ID}")
+else:
+    # OpenAI配置（需要API密钥）
+    API_KEY = os.environ.get("OPENAI_API_KEY", "YOUR_API_KEY")
+    BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    MODEL_ID = os.environ.get("OPENAI_MODEL", "gpt-4")
+    print(f"☁️  使用OpenAI模型: {MODEL_ID}")
+
+# Tavily API密钥（景点搜索功能）
+if not os.environ.get("TAVILY_API_KEY"):
+    print("⚠️  警告: 未配置TAVILY_API_KEY，景点推荐功能将不可用")
+    print("   获取免费密钥: https://tavily.com/")
+    print("   设置方法: export TAVILY_API_KEY='your_key'")
+
+# 检查Ollama服务是否运行
+if USE_OLLAMA:
+    try:
+        import urllib.request
+        urllib.request.urlopen("http://localhost:11434", timeout=2)
+        print("✅ Ollama服务运行正常")
+    except:
+        print("❌ 错误: Ollama服务未运行")
+        print("   请先启动Ollama服务: ollama serve")
+        print("   或在另一个终端运行: ollama run qwen3:4b")
+        exit(1)
+
+llm = OpenAICompatibleClient(
+    model=MODEL_ID,
+    api_key=API_KEY,
+    base_url=BASE_URL
+)
+
+
+def main():
+    """
+    主函数：运行ReAct Agent主循环
+    """
+    # --- 2. 初始化 ---
+    user_prompt = "你好，请帮我查询一下今天北京的天气，然后根据天气推荐一个合适的旅游景点。"
+    prompt_history = [f"用户请求: {user_prompt}"]
+
+    print(f"用户输入: {user_prompt}\n" + "="*40)
+
+    # --- 3. 运行主循环 ---
+    for i in range(5):  # 设置最大循环次数
+        print(f"--- 循环 {i+1} ---\n")
+        
+        # 3.1. 构建Prompt
+        full_prompt = "\n".join(prompt_history)
+        
+        # 3.2. 调用LLM进行思考
+        llm_output = llm.generate(full_prompt, system_prompt=AGENT_SYSTEM_PROMPT)
+        # 模型可能会输出多余的Thought-Action，需要截断
+        match = re.search(r'(Thought:.*?Action:.*?)(?=\n\s*(?:Thought:|Action:|Observation:)|\Z)', llm_output, re.DOTALL)
+        if match:
+            truncated = match.group(1).strip()
+            if truncated != llm_output.strip():
+                llm_output = truncated
+                print("已截断多余的 Thought-Action 对")
+        print(f"模型输出:\n{llm_output}\n")
+        prompt_history.append(llm_output)
+        
+        # 3.3. 解析并执行行动
+        action_match = re.search(r"Action: (.*)", llm_output, re.DOTALL)
+        if not action_match:
+            observation = "错误: 未能解析到 Action 字段。请确保你的回复严格遵循 'Thought: ... Action: ...' 的格式。"
+            observation_str = f"Observation: {observation}"
+            print(f"{observation_str}\n" + "="*40)
+            prompt_history.append(observation_str)
+            continue
+        action_str = action_match.group(1).strip()
+
+        if action_str.startswith("Finish"):
+            final_answer = re.match(r"Finish\[(.*)\]", action_str).group(1)
+            print(f"任务完成，最终答案: {final_answer}")
+            break
+        
+        # 解析工具调用
+        tool_match = re.search(r"(\w+)\(", action_str)
+        if not tool_match:
+            observation = f"错误: 无法解析工具名称，Action格式应为: function_name(arg=\"value\")，实际为: {action_str}"
+            observation_str = f"Observation: {observation}"
+            print(f"{observation_str}\n" + "="*40)
+            prompt_history.append(observation_str)
+            continue
+            
+        tool_name = tool_match.group(1)
+        args_match = re.search(r"\((.*)\)", action_str)
+        if not args_match:
+            observation = f"错误: 无法解析工具参数，Action格式应为: function_name(arg=\"value\")，实际为: {action_str}"
+            observation_str = f"Observation: {observation}"
+            print(f"{observation_str}\n" + "="*40)
+            prompt_history.append(observation_str)
+            continue
+            
+        args_str = args_match.group(1)
+        kwargs = dict(re.findall(r'(\w+)="([^"]*)"', args_str))
+        if tool_name in available_tools:
+            # 这里开始调用工具函数
+            print(f"🔧 正在调用工具: {tool_name}({kwargs})")
+            observation = available_tools[tool_name](**kwargs)
+        else:
+            observation = f"错误:未定义的工具 '{tool_name}'"
+
+        # 3.4. 记录观察结果
+        observation_str = f"Observation: {observation}"
+        print(f"{observation_str}\n" + "="*40)
+        prompt_history.append(observation_str)
+
+# 系统提示词 这里模拟了输出哪个工具的
+AGENT_SYSTEM_PROMPT = """
+你是一个智能旅行助手。你的任务是分析用户的请求，并使用可用工具一步步地解决问题。
+
+# 可用工具:
+- `get_weather(city: str)`: 查询指定城市的实时天气。
+- `get_attraction(city: str, weather: str)`: 根据城市和天气搜索推荐的旅游景点。
+
+# 输出格式要求:
+你的每次回复必须严格遵循以下格式，包含一对Thought和Action：
+
+Thought: [你的思考过程和下一步计划]
+Action: [你要执行的具体行动]
+
+Action的格式必须是以下之一：
+1. 调用工具：function_name(arg_name="arg_value")
+2. 结束任务：Finish[最终答案]
+
+# 重要提示:
+- 每次只输出一对Thought-Action
+- Action必须在同一行，不要换行
+- 当收集到足够信息可以回答用户问题时，必须使用 Action: Finish[最终答案] 格式结束
+
+请开始吧！
+"""
+
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python3 analyze.py <log_file_path>")
-    else:
-        analyze_log(sys.argv[1])
+    main()
+
 ```
 
-skill.md
+##### 返回
+![返回.png](https://cdn.nlark.com/yuque/0/2026/png/21570810/1775308932172-2d605ef9-662d-4bb9-a7a2-d8ec5548aa58.png?x-oss-process=image%2Fformat%2Cwebp)
 
-```markdown
----
-name: log_analyzer
-description: A skill to analyze log files for errors and warnings using a Python script.
----
-
-# Log Analyzer Skill
-
-This skill analyzes a log file to count the occurrences of "ERROR" and "WARNING" and lists the lines where they appear.
-
-## Capability
-
-The skill provides a Python script named `analyze.py` located in this directory. You can use this script to analyze any text file.
-
-## Usage
-
-To use this skill, execute the `analyze.py` script with the target log file as an argument.
-
-### Example
-
-```bash
-python3 {{.BaseDirectory}}/scripts/analyze.py /path/to/logfile.log
-```
-**Note**: Replace `/path/to/logfile.log` with the actual path of the file you want to analyze.
-```
-
-
-
+核心思想就是通过系统提示词拿到需调用的工具为天气weather 则回去调用天气调用api拿到当前的天气
+循环调用llm拿到工具为景点api、调用https://app.tavily.com/home 拿到天气适合旅游的景点
+拿到之前的返回拼接prompt_history 当当收集到足够信息可以回答用户问题时再去调用llm 则会结束调用即observing观察过程
 
 
 
