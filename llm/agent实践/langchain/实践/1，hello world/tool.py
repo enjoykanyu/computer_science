@@ -1,33 +1,50 @@
 from dataclasses import dataclass
+
+from langchain.agents import create_agent
+from langchain.chat_models import init_chat_model
 from langchain.tools import tool, ToolRuntime
+from langgraph.checkpoint.memory import InMemorySaver
+from langchain.agents.structured_output import ToolStrategy
 
-@tool
-def get_weather_for_location(city: str) -> str:
-    """Get weather for a given city."""
-    return f"It's always sunny in {city}!"
 
+# Define system prompt
+SYSTEM_PROMPT = """You are an expert weather forecaster, who speaks in puns.
+
+You have access to two tools:
+
+- get_weather_for_location: use this to get the weather for a specific location
+- get_user_location: use this to get the user's location
+
+If a user asks you for the weather, make sure you know the location. If you can tell from the question that they mean wherever they are, use the get_user_location tool to find their location."""
+
+# Define context schema
 @dataclass
 class Context:
     """Custom runtime context schema."""
     user_id: str
 
+# Define tools
+@tool
+def get_weather_for_location(city: str) -> str:
+    """Get weather for a given city."""
+    print(f"🔧 [工具调用] get_weather_for_location(city='{city}')") 
+    return f"It's always sunny in {city}!"
+
 @tool
 def get_user_location(runtime: ToolRuntime[Context]) -> str:
     """Retrieve user information based on user ID."""
+    print(f"开始调用工具get_user_location: {runtime.context.user_id}")
     user_id = runtime.context.user_id
     return "Florida" if user_id == "1" else "SF"
-from langchain.chat_models import init_chat_model
 
+# Configure model
 model = init_chat_model(
-    "claude-sonnet-4-6",
-    temperature=0.5,
-    timeout=10,
-    max_tokens=1000
+   model="qwen3:0.6b",
+    model_provider="ollama",
+    temperature=0
 )
 
-from dataclasses import dataclass
-
-# We use a dataclass here, but Pydantic models are also supported.
+# Define response format
 @dataclass
 class ResponseFormat:
     """Response schema for the agent."""
@@ -36,14 +53,12 @@ class ResponseFormat:
     # Any interesting information about the weather if available
     weather_conditions: str | None = None
 
-from langgraph.checkpoint.memory import InMemorySaver
-
+# Set up memory
 checkpointer = InMemorySaver()
 
-from langchain.agents.structured_output import ToolStrategy
-
+# Create agent
 agent = create_agent(
-    model="llama3.2:3b",
+    model=model,
     system_prompt=SYSTEM_PROMPT,
     tools=[get_user_location, get_weather_for_location],
     context_schema=Context,
@@ -51,6 +66,7 @@ agent = create_agent(
     checkpointer=checkpointer
 )
 
+# Run agent
 # `thread_id` is a unique identifier for a given conversation.
 config = {"configurable": {"thread_id": "1"}}
 
@@ -60,7 +76,16 @@ response = agent.invoke(
     context=Context(user_id="1")
 )
 
-print(response['structured_response'])
+print("=== Response Keys ===")
+print(response.keys() if hasattr(response, 'keys') else response)
+
+# 提取回答
+messages = response.get("messages", [])
+print(messages)
+if messages:
+    last_msg = messages[-1]
+    print("\n=== 首次回答 ===")
+    print(last_msg.content)
 # ResponseFormat(
 #     punny_response="Florida is still having a 'sun-derful' day! The sunshine is playing 'ray-dio' hits all day long! I'd say it's the perfect weather for some 'solar-bration'! If you were hoping for rain, I'm afraid that idea is all 'washed up' - the forecast remains 'clear-ly' brilliant!",
 #     weather_conditions="It's always sunny in Florida!"
@@ -74,7 +99,15 @@ response = agent.invoke(
     context=Context(user_id="1")
 )
 
-print(response['structured_response'])
+print("=== Response Keys ===")
+print(response.keys() if hasattr(response, 'keys') else response)
+
+# 提取回答
+messages = response.get("messages", [])
+if messages:
+    last_msg = messages[-1]
+    print("\n=== 最终回答 ===")
+    print(last_msg.content)
 # ResponseFormat(
 #     punny_response="You're 'thund-erfully' welcome! It's always a 'breeze' to help you stay 'current' with the weather. I'm just 'cloud'-ing around waiting to 'shower' you with more forecasts whenever you need them. Have a 'sun-sational' day in the Florida sunshine!",
 #     weather_conditions=None
