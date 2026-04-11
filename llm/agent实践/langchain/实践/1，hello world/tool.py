@@ -5,6 +5,8 @@ from langchain.chat_models import init_chat_model
 from langchain.tools import tool, ToolRuntime
 from langgraph.checkpoint.memory import InMemorySaver
 from langchain.agents.structured_output import ToolStrategy
+from langchain_openai import ChatOpenAI
+
 
 
 # Define system prompt
@@ -36,11 +38,22 @@ def get_user_location(runtime: ToolRuntime[Context]) -> str:
     print(f"开始调用工具get_user_location: {runtime.context.user_id}")
     user_id = runtime.context.user_id
     return "Florida" if user_id == "1" else "SF"
+# tool.py 开头添加
+from dotenv import load_dotenv
+import os
+
+
+
+load_dotenv()  # 自动加载 .env 文件
+api_key = os.getenv("OPENAI_API_KEY")
+base_url = os.getenv("OPENAI_BASE_URL")
+model = os.getenv("OPENAI_MODEL")
 
 # Configure model
-model = init_chat_model(
-   model="qwen3:0.6b",
-    model_provider="ollama",
+model = ChatOpenAI(
+   model=model,
+    api_key=api_key,
+    base_url=base_url,
     temperature=0
 )
 
@@ -76,39 +89,45 @@ response = agent.invoke(
     context=Context(user_id="1")
 )
 
-print("=== Response Keys ===")
-print(response.keys() if hasattr(response, 'keys') else response)
 
-# 提取回答
-messages = response.get("messages", [])
-print(messages)
-if messages:
-    last_msg = messages[-1]
-    print("\n=== 首次回答 ===")
-    print(last_msg.content)
-# ResponseFormat(
-#     punny_response="Florida is still having a 'sun-derful' day! The sunshine is playing 'ray-dio' hits all day long! I'd say it's the perfect weather for some 'solar-bration'! If you were hoping for rain, I'm afraid that idea is all 'washed up' - the forecast remains 'clear-ly' brilliant!",
-#     weather_conditions="It's always sunny in Florida!"
-# )
+print("首次回答问题")
+print(response['structured_response'])
+
+# print("=== Response Keys ===")
+# print(response.keys() if hasattr(response, 'keys') else response)
+
+# # 提取回答
+# messages = response.get("messages", [])
+# if messages:
+#     last_msg = messages[-1]
+#     print("\n=== 首次回答 ===")
+#     print(last_msg.content)
+# # ResponseFormat(
+# #     punny_response="Florida is still having a 'sun-derful' day! The sunshine is playing 'ray-dio' hits all day long! I'd say it's the perfect weather for some 'solar-bration'! If you were hoping for rain, I'm afraid that idea is all 'washed up' - the forecast remains 'clear-ly' brilliant!",
+# #     weather_conditions="It's always sunny in Florida!"
+# # )
 
 
-# Note that we can continue the conversation using the same `thread_id`.
+# # Note that we can continue the conversation using the same `thread_id`.
 response = agent.invoke(
     {"messages": [{"role": "user", "content": "thank you!"}]},
     config=config,
     context=Context(user_id="1")
 )
 
-print("=== Response Keys ===")
-print(response.keys() if hasattr(response, 'keys') else response)
+print("最终回答问题")
+print(response['structured_response'])
 
-# 提取回答
-messages = response.get("messages", [])
-if messages:
-    last_msg = messages[-1]
-    print("\n=== 最终回答 ===")
-    print(last_msg.content)
-# ResponseFormat(
-#     punny_response="You're 'thund-erfully' welcome! It's always a 'breeze' to help you stay 'current' with the weather. I'm just 'cloud'-ing around waiting to 'shower' you with more forecasts whenever you need them. Have a 'sun-sational' day in the Florida sunshine!",
-#     weather_conditions=None
-# )
+# print("=== Response Keys ===")
+# print(response.keys() if hasattr(response, 'keys') else response)
+
+# # 提取回答
+# messages = response.get("messages", [])
+# if messages:
+#     last_msg = messages[-1]
+#     print("\n=== 最终回答 ===")
+#     print(last_msg.content)
+# # ResponseFormat(
+# #     punny_response="You're 'thund-erfully' welcome! It's always a 'breeze' to help you stay 'current' with the weather. I'm just 'cloud'-ing around waiting to 'shower' you with more forecasts whenever you need them. Have a 'sun-sational' day in the Florida sunshine!",
+# #     weather_conditions=None
+# # )
