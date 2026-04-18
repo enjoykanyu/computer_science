@@ -11,73 +11,73 @@ import os
 # ─── 1. 定义工具 ───
 @tool
 def calculator(expression: str) -> str:
-    """计算数学表达式。输入如 '2+3*4'"""
-    try:
-        return str(eval(expression))
-    except Exception as e:
-        return f"计算错误: {e}"
+  """计算数学表达式。输入如 '2+3*4'"""
+  try:
+    return str(eval(expression))
+  except Exception as e:
+    return f"计算错误: {e}"
 
 @tool
 def get_weather(city: str) -> str:
-    """获取指定城市的天气信息"""
-    return f"{city}今天晴朗，25°C"
+  """获取指定城市的天气信息"""
+  return f"{city}今天晴朗，25°C"
 
 tools = [calculator, get_weather]
 load_dotenv()  # 自动加载 .env 文件
 apiKey = os.getenv("OLLAMA_API_KEY", "ollama")  # Ollama不需要真实密钥
 baseUrl = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")  # 可选: deepseek-r1:8b, qwen3:1.7b
-    
+
 # Configure model
 llm = ChatOpenAI(
-   model=model,
-    api_key=apiKey,
-    base_url=baseUrl,
-    temperature=0
+  model=model,
+  api_key=apiKey,
+  base_url=baseUrl,
+  temperature=0
 )
 llm_with_tools = llm.bind_tools(tools)
 
 # ─── 2. Agent Loop 核心 ───
 async def agent_loop(user_input: str, max_turns: int = 10):
-    messages = [HumanMessage(content=user_input)]
+  messages = [HumanMessage(content=user_input)]
 
-    for turn in range(max_turns):
-        print(f"\n--- Turn {turn + 1} ---")
+  for turn in range(max_turns):
+    print(f"\n--- Turn {turn + 1} ---")
 
-        # 调用 LLM
-        response = await llm_with_tools.ainvoke(messages)
-        messages.append(response)
+    # 调用 LLM
+    response = await llm_with_tools.ainvoke(messages)
+    messages.append(response)
 
-        # 检查是否有工具调用
-        if response.tool_calls:
-            print(f"🔧 模型决定调用 {len(response.tool_calls)} 个工具:")
-            for tc in response.tool_calls:
-                print(f"   → {tc['name']}({tc['args']})")
+    # 检查是否有工具调用
+    if response.tool_calls:
+      print(f"🔧 模型决定调用 {len(response.tool_calls)} 个工具:")
+      for tc in response.tool_calls:
+        print(f"   → {tc['name']}({tc['args']})")
 
-            # 执行每个工具
-            for tc in response.tool_calls:
-                tool_name = tc["name"]
-                tool_args = tc["args"]
+      # 执行每个工具
+      for tc in response.tool_calls:
+        tool_name = tc["name"]
+        tool_args = tc["args"]
 
-                # 找到对应工具并执行
-                selected_tool = next(t for t in tools if t.name == tool_name)
-                result = selected_tool.invoke(tool_args)
+        # 找到对应工具并执行
+        selected_tool = next(t for t in tools if t.name == tool_name)
+        result = selected_tool.invoke(tool_args)
 
-                print(f"   ← {result}")
-                messages.append(
-                    ToolMessage(content=str(result), tool_call_id=tc["id"])
-                )
-            # 继续下一轮循环
-        else:
-            # 无工具调用 → 返回最终答案
-            print(f"✅ 最终回答: {response.content}")
-            return response.content
+        print(f"   ← {result}")
+        messages.append(
+          ToolMessage(content=str(result), tool_call_id=tc["id"])
+        )
+      # 继续下一轮循环
+    else:
+      # 无工具调用 → 返回最终答案
+      print(f"✅ 最终回答: {response.content}")
+      return response.content
 
-    return "达到最大轮次限制"
+  return "达到最大轮次限制"
 
 # ─── 3. 运行 ───
 if __name__ == "__main__":
-    asyncio.run(agent_loop("北京和上海的天气怎么样？另外帮我算一下 123*456"))
+  asyncio.run(agent_loop("北京和上海的天气怎么样？另外帮我算一下 123*456"))
 ```
 
 注意这里使用的llm_with_tools = llm.bind_tools(tools)  
@@ -250,3 +250,109 @@ graph.add_conditional_edges("model", should_continue, {"tools": "tools", END: EN
 graph.add_edge("tools", "model") #增加边 tools 节点执行完后， 无条件 回到 model
 app = graph.compile() # 编译图 把声明式的图编译成可执行的 app
 ```
+
+
+
+# tool系统
+
+
+```python
+import asyncio
+from langchain_core.tools import tool
+from langchain_core.messages import ToolMessage
+
+CONCURRENCY_SAFE = {"read_file", "grep_search", "list_files"}
+READONLY_TOOLS = {"read_file", "grep_search", "list_files", "web_search"}
+
+@tool
+def read_file(path: str) -> str:
+    """读取文件内容"""
+    try: return open(path).read()[:5000]
+    except Exception as e: return f"错误: {e}"
+
+@tool
+def write_file(path: str, content: str) -> str:
+    """写入文件"""
+    try:
+        open(path, 'w').write(content)
+        return f"已写入 {path}"
+    except Exception as e: return f"错误: {e}"
+
+@tool
+def bash(command: str) -> str:
+    """执行shell命令"""
+    import subprocess
+    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    return result.stdout[:5000] or result.stderr
+
+tools = [read_file, write_file, bash]
+
+def check_permission(tool_name, args, mode="default"):
+    if mode == "plan" and tool_name not in READONLY_TOOLS:
+        return {"action": "deny", "message": "Plan模式只允许只读工具"}
+    if tool_name == "bash" and any(w in args.get("command","") for w in ["rm ", "delete", "drop"]):
+        return {"action": "confirm", "message": f"⚠️ 危险命令: {args['command']}"}
+    return {"action": "allow"}
+
+async def execute_tools_parallel(tool_calls, mode="default"):
+    results = []
+    safe_batch = []
+    for tc in tool_calls:
+        perm = check_permission(tc["name"], tc["args"], mode)
+        if perm["action"] == "deny":
+            results.append(ToolMessage(content=perm["message"], tool_call_id=tc["id"]))
+        elif perm["action"] == "confirm":
+            answer = input(f"{perm['message']} 允许?(y/n): ")
+            if answer.lower() != 'y':
+                results.append(ToolMessage(content="用户拒绝", tool_call_id=tc["id"]))
+                continue
+            selected = next(t for t in tools if t.name == tc["name"])
+            result = selected.invoke(tc["args"])
+            results.append(ToolMessage(content=str(result), tool_call_id=tc["id"]))
+        else:
+            selected = next(t for t in tools if t.name == tc["name"])
+            if tc["name"] in CONCURRENCY_SAFE:
+                safe_batch.append((tc, selected))
+            else:
+                result = selected.invoke(tc["args"])
+                results.append(ToolMessage(content=str(result), tool_call_id=tc["id"]))
+    if safe_batch:
+        parallel_results = await asyncio.gather(*[
+            asyncio.to_thread(s.invoke, tc["args"]) for tc, s in safe_batch
+        ])
+        for (tc, _), result in zip(safe_batch, parallel_results):
+            results.append(ToolMessage(content=str(result), tool_call_id=tc["id"]))
+    return results
+
+
+if __name__ == "__main__":
+    import os
+    
+    THIS_FILE = os.path.abspath(__file__)  # 当前文件的绝对路径
+    
+    async def test_tools():
+        print("=== 测试1: 直接调用工具 ===")
+        result = read_file.invoke({'path': THIS_FILE})
+        print(f"read_file(当前文件): {result[:100]}...")
+        print(f"bash('echo hello'): {bash.invoke({'command': 'echo hello'})}")
+        
+        print("\n=== 测试2: 权限检查 ===")
+        print(f"plan模式调用write_file: {check_permission('write_file', {'path': 'test.txt'}, 'plan')}")
+        result = check_permission('bash', {'command': 'rm -rf /tmp/test'})
+        print(f"危险命令rm: {result}")
+        
+        print("\n=== 测试3: 模拟 tool_calls 并行执行 ===")
+        tool_calls = [
+            {"id": "call_1", "name": "read_file", "args": {"path": THIS_FILE}},
+            {"id": "call_2", "name": "bash", "args": {"command": "ls -la"}},
+        ]
+        results = await execute_tools_parallel(tool_calls, mode="default")
+        for r in results:
+            print(f"结果: {r.content[:100]}...")
+    
+    asyncio.run(test_tools())
+```
+
++ 输出
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776527895358-99265fd4-4e05-4a4a-b83d-b97a7f684954.png" width="652" title="" crop="0,0,1,1" id="u3379cfcd" class="ne-image">
