@@ -356,3 +356,433 @@ if __name__ == "__main__":
 + 输出
 
 <img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776527895358-99265fd4-4e05-4a4a-b83d-b97a7f684954.png" width="652" title="" crop="0,0,1,1" id="u3379cfcd" class="ne-image">
+
+
+
+# RAG
+### 分块
+##### 分块概念
+<font style="color:rgb(51, 51, 51);">RAG分块是指将长文档切分成多个较小文本片段的过程，每个片段称为"chunk"</font>
+
+##### <font style="color:rgb(51, 51, 51);">需分块原因</font>
++ **向量嵌入模型限制**
+
+<font style="color:rgb(51, 51, 51);">嵌入模型有严格的输入长度限制。每个块需都在模型处理范围内</font>
+
++ **检索精度需求**
+  - <font style="color:rgb(51, 51, 51);">整个文档作为单一向量会导致：</font>
+    * <font style="color:rgb(51, 51, 51);">语义稀释：无关内容干扰相关内容的向量表示</font>
+    * <font style="color:rgb(51, 51, 51);">无法精确定位：无法找到文档中的具体相关段落</font>
+    * <font style="color:rgb(51, 51, 51);">检索噪音增加：大量无关信息降低检索质量</font>
++ **上下文窗口优化**
+  - <font style="color:rgb(51, 51, 51);">LLM的上下文窗口有限，分块可以：</font>
+    * <font style="color:rgb(51, 51, 51);">减少token消耗</font>
+    * <font style="color:rgb(51, 51, 51);">提高处理效率</font>
+    * <font style="color:rgb(51, 51, 51);">降低计算成本</font>
+
+##### 分块策略与原理
+```python
+"""
+分块策略对比：
+
+┌─────────────────┬─────────────────┬─────────────────┬─────────────────┐
+│ 固定大小分块      │ 递归字符分块     │ 语义分块        │ 文档结构分块     │
+├─────────────────┼─────────────────┼─────────────────┼─────────────────┤
+│ chunk_size=512  │ 按分隔符递归     │ 语义边界检测    │ 按标题/段落      │
+│ overlap=50      │ 保持语义完整     │ 嵌入模型判断    │ 保持文档结构     │
+│ 简单高效         │ 灵活适应        │ 语义最优        │ 结构清晰        │
+│ 可能截断语义      │ 需要调参        │ 计算成本高      │ 依赖文档格式     │
+└─────────────────┴─────────────────┴─────────────────┴─────────────────┘
+
+推荐：递归字符分块 + 文档结构分块组合使用
+"""
+
+# 分块策略实现
+class ChunkingStrategy:
+    
+    @staticmethod
+    def recursive_chunking(
+        text: str,
+        chunk_size: int = 512,
+        chunk_overlap: int = 50,
+        separators: List[str] = None,
+    ) -> List[Document]:
+        """
+        递归字符分块 - 推荐
+        
+        原理：
+        1. 按分隔符优先级分割（段落 > 句子 > 词）
+        2. 递归处理直到满足大小要求
+        3. 保持语义完整性
+        """
+        separators = separators or [
+            "\n\n",    # 段落
+            "\n",      # 行
+            "。",      # 中文句号
+            "！",      # 中文感叹号
+            "？",      # 中文问号
+            ".",       # 英文句号
+            "!",       # 英文感叹号
+            "?",       # 英文问号
+            " ",       # 空格
+            "",        # 字符
+        ]
+        
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            separators=separators,
+            length_function=len,
+        )
+        
+        chunks = splitter.split_text(text)
+        return [
+            Document(
+                page_content=chunk,
+                metadata={"chunk_index": i, "chunk_size": len(chunk)}
+            )
+            for i, chunk in enumerate(chunks)
+        ]
+    
+    @staticmethod
+    def semantic_chunking(
+        text: str,
+        embedding_model: Any,
+        breakpoint_threshold: float = 0.8,
+    ) -> List[Document]:
+        """
+        语义分块 - 高级
+        
+        原理：
+        1. 将文本分割成句子
+        2. 计算相邻句子的语义相似度
+        3. 在相似度低的点分割
+        """
+        from langchain_experimental.text_splitter import SemanticChunker
+        
+        splitter = SemanticChunker(
+            embedding_model,
+            breakpoint_threshold_type="percentile",
+            breakpoint_threshold_amount=breakpoint_threshold,
+        )
+        
+        return splitter.create_documents([text])
+```
+
+
+
++ 固定大小分块
+
+原理：<font style="color:rgb(51, 51, 51);">最简单粗暴，按字符数量硬切，不管语义</font>
+
+```python
+def fixed_size_chunking(text: str, chunk_size: int = 100, overlap: int = 20):
+    """
+    固定大小分块
+    text: 原始文本
+    chunk_size: 每块多少个字符
+    overlap: 相邻两块重叠多少字符（防止语义断裂）
+    """
+    chunks = []
+    start = 0
+
+    while start < len(text):
+        end = start + chunk_size
+        chunk = text[start:end]
+        chunks.append(chunk)
+        # 下一块从 (start + chunk_size - overlap) 开始
+        start += chunk_size - overlap
+
+    return chunks
+
+# 测试
+text = "人工智能是计算机科学的一个分支。它试图理解智能的实质，并生产出一种新的能以人类智能相似的方式做出反应的智能机器。该领域的研究包括机器人、语言识别、图像识别、自然语言处理和专家系统等。"
+
+chunks = fixed_size_chunking(text, chunk_size=50, overlap=10)
+for i, chunk in enumerate(chunks):
+    print(f"[块{i+1}] {chunk}")
+    print()
+```
+
+    - 输出
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776588205742-b372d75c-ab18-4944-ad48-2ddc64695bba.png" width="505" title="" crop="0,0,1,1" id="u5f6eb2f9" class="ne-image">
+
+可以看到这里依据50个字符大小分割了，即使这里有文字被截断了
+
+
+
++ 递归字符分块
+
+<font style="color:rgb(51, 51, 51);">按优先级尝试分隔符（先按段落</font>`**<font style="color:rgb(51, 51, 51);">\n\n</font>**`<font style="color:rgb(51, 51, 51);">切，切不够小再按句子</font>`**<font style="color:rgb(51, 51, 51);">。</font>**`<font style="color:rgb(51, 51, 51);">切，再不行按空格切……），保证语义完整性</font>
+
+<font style="color:rgb(51, 51, 51);">下载依赖 </font><font style="color:rgb(106, 115, 125);background-color:rgb(229, 229, 229);">pip install langchain-text-splitters </font>
+
+<font style="color:rgb(106, 115, 125);background-color:rgb(229, 229, 229);"></font>
+
+```python
+# 递归字符分块
+# 
+from langchain_text_splitters import RecursiveCharacterTextSplitter  
+  
+def recursive_chunking(text: str, chunk_size: int = 100, overlap: int = 20):  
+    """  
+    递归字符分块  
+    分隔符优先级：段落 > 换行 > 句号 > 逗号 > 空格 > 单字符  
+    """  
+    splitter = RecursiveCharacterTextSplitter(  
+        chunk_size=chunk_size,  
+        chunk_overlap=overlap,  
+        separators=["\n\n", "\n", "。", "！", "？", "，", "、", " ", ""],  
+    )  
+    chunks = splitter.split_text(text)  
+    return chunks  
+  
+# 测试  
+text = """  
+人工智能是计算机科学的一个分支。  
+它试图理解智能的实质，并生产出一种新的能以人类智能相似的方式做出反应的智能机器。  
+  
+该领域的研究包括机器人、语言识别、图像识别、自然语言处理和专家系统等。  
+深度学习是其中最重要的技术之一。  
+"""  
+  
+chunks = recursive_chunking(text, chunk_size=60, overlap=10)  
+for i, chunk in enumerate(chunks):  
+    print(f"[块{i+1}] {chunk}")  
+    print()    
+```
+
+<font style="color:rgb(106, 115, 125);background-color:rgb(229, 229, 229);"></font>
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776588694788-0b133ec7-4964-4639-827a-d3b31bb35838.png" width="516" title="" crop="0,0,1,1" id="XNjDB" class="ne-image">
+
++ 语义分块
+
+<font style="color:rgb(51, 51, 51);">不按字符数切，而是按</font>**<font style="color:rgb(51, 51, 51);">语义相似度</font>**<font style="color:rgb(51, 51, 51);">切。计算相邻句子的向量相似度，相似度突然下降的地方就是分块边界</font>
+
+<font style="color:rgb(51, 51, 51);">下载依赖</font><font style="color:rgb(106, 115, 125);background-color:rgb(229, 229, 229);">pip install langchain-experimental sentence-transformers </font>
+
+```python
+# 语义分块策略
+from langchain_experimental.text_splitter import SemanticChunker  
+from langchain_ollama import OllamaEmbeddings  
+
+def semantic_chunking(text: str):  
+    """  
+    语义分块：相邻句子语义差异大的地方自动切分  
+    """  
+    # 使用本地 Ollama embedding 模型
+    embeddings = OllamaEmbeddings(
+        model="nomic-embed-text:latest"
+    )  
+      
+    splitter = SemanticChunker(  
+        embeddings=embeddings,  
+        breakpoint_threshold_type="percentile",  # 按百分位数判断断点  
+        breakpoint_threshold_amount=95,           # 差异超过95%分位才切  
+    )  
+      
+    chunks = splitter.split_text(text)  
+    return chunks  
+  
+# 测试  
+text = """  
+苹果是一种水果，富含维生素C。苹果有红色、绿色等多种颜色。苹果可以直接吃，也可以榨汁。  
+  
+量子计算机利用量子叠加和纠缠原理工作。它比传统计算机快得多。量子比特可以同时表示0和1。  
+  
+今天天气很好，阳光明媚。适合出去散步。公园里的花都开了。  
+"""  
+  
+# 语义分块会把"苹果"、"量子计算机"、"天气"三个主题自动分成3块  
+chunks = semantic_chunking(text)  
+for i, chunk in enumerate(chunks):  
+    print(f"[块{i+1}] {chunk}")  
+    print()
+```
+
+<font style="color:rgb(51, 51, 51);">输出</font>
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776601651322-edb25090-4ce6-48ad-9059-bd56978a235a.png" width="411" title="" crop="0,0,1,1" id="u18412fe8" class="ne-image">
+
+这里仍然没有分块成功
+
+原因：
+
+<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">预处理没有解决分句问题</font>
+
+`<font style="color:rgb(51, 51, 51);">SemanticChunker</font>`<font style="color:rgb(51, 51, 51);"> 内部的分句正则是 </font>`<font style="color:rgb(51, 51, 51);">r"(?<=[.?!])\s+"</font>`<font style="color:rgb(51, 51, 51);"> —— 只认英文标点 </font>`<font style="color:rgb(51, 51, 51);">.?!</font>`<font style="color:rgb(51, 51, 51);">，不认中文的 </font>`<font style="color:rgb(51, 51, 51);">。！？</font>`<font style="color:rgb(51, 51, 51);">。</font>
+
+<font style="color:rgb(51, 51, 51);">你的预处理把 </font>`<font style="color:rgb(51, 51, 51);">。</font>`<font style="color:rgb(51, 51, 51);"> 变成了 </font>`<font style="color:rgb(51, 51, 51);">。\n</font>`<font style="color:rgb(51, 51, 51);">，但分句器看的是 </font>`<font style="color:rgb(51, 51, 51);">。</font>`<font style="color:rgb(51, 51, 51);"> 后面有没有英文句号，所以整段文本仍然被当成1个句子，没有相邻句子可以比较距离，自然无法分块。</font>
+
+
+
+因此作出如下修改
+
+# 关键修复：把中文标点替换成英文句号+空格
+
+    # SemanticChunker 的分句器只认英文标点 .?!  
+
+    text = re.sub(r'[。！？]', '. ', text)  
+
+    text = re.sub(r'\s+', ' ', text).strip()
+
+
+
+```python
+import re
+import numpy as np
+from langchain_ollama import OllamaEmbeddings
+
+
+def split_chinese_sentences(text: str) -> list[str]:
+    sentences = re.split(r'(?<=[。！？])', text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+    return sentences
+
+
+def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+
+def semantic_chunking(text: str, similarity_threshold: float = 0.49) -> list[str]:
+    """
+    自定义中文语义分块
+    1. 按中文标点分句
+    2. 计算相邻句子的余弦相似度
+    3. 相似度低于阈值处切分
+    """
+    sentences = split_chinese_sentences(text)
+    if len(sentences) <= 1:
+        return [text]
+
+    embeddings = OllamaEmbeddings(model="qwen3-embedding:0.6b")
+
+    sentence_embeddings = np.array(embeddings.embed_documents(sentences))
+
+    similarities = []
+    for i in range(len(sentence_embeddings) - 1):
+        sim = cosine_similarity(sentence_embeddings[i], sentence_embeddings[i + 1])
+        similarities.append(sim)
+
+    print("句子间相似度:")
+    for i, sim in enumerate(similarities):
+        print(f"  句子{i+1} <-> 句子{i+2}: {sim:.4f}")
+
+    chunks = []
+    current_chunk = sentences[0]
+    for i, sim in enumerate(similarities):
+        if sim < similarity_threshold:
+            chunks.append(current_chunk)
+            current_chunk = sentences[i + 1]
+        else:
+            current_chunk += sentences[i + 1]
+    chunks.append(current_chunk)
+
+    return chunks
+
+text = """  
+苹果是一种水果，富含维生素C。苹果有红色、绿色等多种颜色。苹果可以直接吃，也可以榨汁。量子计算机利用量子叠加和纠缠原理工作。它比传统计算机快得多。量子比特可以同时表示0和1。今天天气很好，阳光明媚。适合出去散步。公园里的花都开了。天气相当好，可以出去玩。 人工智能相当强大。苹果很好吃。  
+"""  
+  
+chunks = semantic_chunking(text)  
+for i, chunk in enumerate(chunks):  
+    print(f"[块{i+1}] {chunk}")  
+    print()
+
+```
+
+输出
+
+
+
++ 文档结构分块
+
+<font style="color:rgb(51, 51, 51);">利用文档本身的结构（标题、段落、列表）来切分，而不是靠字符数或语义。</font>
+
+<font style="color:rgb(51, 51, 51);"></font>
+
+```python
+import re  
+from typing import List, Dict  
+  
+def structure_chunking(markdown_text: str) -> List[Dict]:  
+    """  
+    文档结构分块：按 Markdown 标题层级切分  
+    适合有明确结构的文档（技术文档、报告、教材等）  
+    """  
+    chunks = []  
+    current_chunk = {"title": "前言", "level": 0, "content": ""}  
+      
+    for line in markdown_text.split("\n"):  
+        # 检测标题行（# 一级标题，## 二级标题，### 三级标题）  
+        header_match = re.match(r'^(#{1,3})\s+(.+)', line)  
+          
+        if header_match:  
+            # 遇到新标题，保存当前块  
+            if current_chunk["content"].strip():  
+                chunks.append(current_chunk.copy())  
+              
+            # 开始新块  
+            level = len(header_match.group(1))  # 几个#就是几级  
+            title = header_match.group(2)  
+            current_chunk = {  
+                "title": title,  
+                "level": level,  
+                "content": ""  
+            }  
+        else:  
+            # 普通内容行，追加到当前块  
+            current_chunk["content"] += line + "\n"  
+      
+    # 别忘了最后一块  
+    if current_chunk["content"].strip():  
+        chunks.append(current_chunk)  
+      
+    return chunks  
+  
+  
+# 测试  
+markdown_doc = """  
+# 人工智能简介  
+  
+人工智能（AI）是计算机科学的重要分支。  
+  
+## 机器学习  
+  
+机器学习是AI的核心技术。  
+通过大量数据训练模型，让机器自动学习规律。  
+  
+### 深度学习  
+  
+深度学习使用多层神经网络。  
+在图像识别、语音识别领域表现优异。  
+  
+## 自然语言处理  
+  
+NLP让计算机理解人类语言。  
+ChatGPT就是NLP技术的典型应用。  
+"""  
+  
+chunks = structure_chunking(markdown_doc)  
+for chunk in chunks:  
+    print(f"[{'#'*chunk['level']} {chunk['title']}]")  
+    print(chunk['content'].strip())  
+    print()
+```
+
+输出
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776602624626-0537cb00-5537-4cf5-8c95-4d3f63e1ec89.png" width="434" title="" crop="0,0,1,1" id="u8ab1e80e" class="ne-image">
+
+
+
+### embedding选择
+常见的embedding
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776603129387-f802d9ce-7d68-4c15-b0bb-47373e0a0f76.png" width="556" title="" crop="0,0,1,1" id="ub3f5d3ea" class="ne-image">
+
+
+
+
