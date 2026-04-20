@@ -360,6 +360,238 @@ if __name__ == "__main__":
 
 
 # RAG
+### 文档加载
+<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">"文档加载"在不同框架中的含义略有差异：</font>
+
++ **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">LangChain</font>**<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);"> </font><font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">中：</font>`**<font style="color:rgb(51, 51, 51);background-color:rgb(229, 229, 229);">DocumentLoader</font>**`<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);"> </font><font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">负责将各种格式的文件转换为统一的</font><font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);"> </font>`**<font style="color:rgb(51, 51, 51);background-color:rgb(229, 229, 229);">Document</font>**`<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);"> </font><font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">对象</font>
++ **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">RAGFlow</font>**<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);"> </font><font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">中：</font>`**<font style="color:rgb(51, 51, 51);background-color:rgb(229, 229, 229);">Parser</font>**`<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);"> </font><font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">负责将二进制文件解析为带位置信息的文本段落（sections）</font>
++ **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">LangGraph</font>**<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);"> 中：文档加载是 Graph 中的一个节点（Node），可以有条件地路由到不同的加载器</font>
+
+<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">"文档加载"是离线阶段的第一步，核心任务是：</font>**<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">将任意格式的原始文件，转换为统一的、可处理的文本结构</font>**<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">。</font>
+
+<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);"></font>
+
+##### <font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">加载pdf文档</font>
+```python
+# ============================================================  
+# 1. PDF 加载（文字层 PDF）  
+# ============================================================  
+from langchain_community.document_loaders import PyPDFLoader  
+  
+loader = PyPDFLoader("report.pdf")  
+docs = loader.load()  
+print(f"PDF 共 {len(docs)} 页")  
+print(docs[0].page_content[:200])  
+print(docs[0].metadata)  # {'source': 'report.pdf', 'page': 0}  
+```
+
+打印
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776665182744-2d274638-ae98-47b8-ac64-d8a2b8fbae9a.png" width="474" title="" crop="0,0,1,1" id="u199f2deb" class="ne-image">
+
+惰性加载
+
+
+
+```python
+# 惰性加载（大文件推荐）  
+for doc in loader.lazy_load():  
+    print(doc.metadata["page"], doc.page_content[:50])  
+```
+
++ 区别
+  - <font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">返回类型：</font>`**<font style="color:rgb(51, 51, 51);background-color:rgb(229, 229, 229);">Iterator[Document]</font>**`<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">（生成器）</font>
+  - <font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">每次迭代才读取下一页，</font>**<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">前一页可以被 GC 回收</font>**
+  - <font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">不能随机访问，不能 </font>`**<font style="color:rgb(51, 51, 51);background-color:rgb(229, 229, 229);">len()</font>**`<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">，只能顺序遍历</font>
+
+<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">输出</font>
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776665418937-821d9784-18a7-4208-a112-a9faa03335c2.png" width="502" title="" crop="0,0,1,1" id="ubf995127" class="ne-image">
+
+
+
+##### 加载word文档
+
+
+```python
+# ============================================================  
+# 2. Word 文档  
+# ============================================================  
+from langchain_community.document_loaders import Docx2txtLoader  
+  
+loader = Docx2txtLoader("contract.docx")  
+docs = loader.load()  # 整个文档作为一个 Document  
+```
+
+
+
+##### 加载scv文件
+
+
+```python
+# ============================================================  
+# 3. CSV（每行一个 Document）  
+# ============================================================  
+from langchain_community.document_loaders import CSVLoader  
+  
+loader = CSVLoader(  
+    file_path="data.csv",  
+    source_column="url",          # 指定哪列作为 metadata["source"]  
+    csv_args={"delimiter": ","},  
+)  
+docs = loader.load()  
+print(docs[0].page_content)  # "column1: value1\ncolumn2: value2\n..."  
+  
+```
+
+
+
+##### 加载json文件
+
+
+```python
+# ============================================================  
+# 4. JSON（用 jq 表达式提取）  
+# ============================================================  
+from langchain_community.document_loaders import JSONLoader  
+  
+loader = JSONLoader(  
+    file_path="data.json",  
+    jq_schema=".records[].content",  # jq 表达式  
+    text_content=True,  
+)  
+docs = loader.load()  
+```
+
+
+
+##### 加载网页
+```python
+# ============================================================  
+# 5. 网页  
+# ============================================================  
+from langchain_community.document_loaders import WebBaseLoader
+import bs4
+# 设置请求头，模拟真实浏览器访问
+headers = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+}
+
+# 示例1：爬取有文章内容的页面（如技术博客）
+loader = WebBaseLoader(
+    web_paths=["https://docs.python.org/3/tutorial/index.html"],  # Python 官方文档
+    header_template=headers,
+    bs_kwargs={"parse_only": bs4.SoupStrainer("div")},  # 只解析 <div> 标签
+)
+
+docs = loader.load()  
+print(docs[0].page_content[:200])  # 打印文章内容
+```
+
+打印
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776666120441-007b9fcf-ae6d-4f73-b93b-606e588a14ad.png" width="369" title="" crop="0,0,1,1" id="ued13fdd3" class="ne-image">
+
+
+
+##### 加载markdown文件
+```python
+# ============================================================  
+# 6. Markdown（保留标题层级）  
+# ============================================================  
+from langchain_text_splitters import MarkdownHeaderTextSplitter  
+  
+md_text = """  
+# 第一章  
+## 1.1 背景  
+这是背景内容。  
+## 1.2 目标  
+这是目标内容。  
+# 第二章  
+正文内容。  
+"""  
+  
+splitter = MarkdownHeaderTextSplitter(  
+    headers_to_split_on=[  
+        ("#", "H1"),  
+        ("##", "H2"),  
+        ("###", "H3"),  
+    ]  
+)  
+docs = splitter.split_text(md_text)  
+# 每个 Document 的 metadata 包含 {"H1": "第一章", "H2": "1.1 背景"}  
+  
+```
+
+输出
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776666304599-8e62adc1-bdc0-438c-9ece-70377c7b2dd9.png" width="510" title="" crop="0,0,1,1" id="u96f0967d" class="ne-image">
+
+
+
+##### 加载代码文件
+```python
+# ============================================================  
+# 7. 代码文件  
+# ============================================================  
+from langchain_text_splitters import Language, RecursiveCharacterTextSplitter  
+  
+loader = TextLoader("main.py")  
+docs = loader.load()  
+  
+splitter = RecursiveCharacterTextSplitter.from_language(  
+    language=Language.PYTHON,  
+    chunk_size=500,  
+    chunk_overlap=50,  
+)  
+chunks = splitter.split_documents(docs)
+```
+
+输出
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776666425797-a17ede01-7a67-42fa-8984-d7b7e2c67df5.png" width="525" title="" crop="0,0,1,1" id="u40cb5922" class="ne-image">
+
+
+
+##### 通用路由加载器
+可以在调用的时候指定哪类加载器进行加载指定的文档
+
+```python
+from pathlib import Path  
+from langchain_community.document_loaders import (  
+    PyPDFLoader, Docx2txtLoader, CSVLoader,  
+    TextLoader, BSHTMLLoader, UnstructuredMarkdownLoader,  
+    UnstructuredExcelLoader, UnstructuredPowerPointLoader,  
+)  
+from langchain_core.documents import Document  
+  
+LOADER_MAP = {  
+    ".pdf":  PyPDFLoader,  
+    ".docx": Docx2txtLoader,  
+    ".csv":  CSVLoader,  
+    ".txt":  TextLoader,  
+    ".md":   UnstructuredMarkdownLoader,  
+    ".html": BSHTMLLoader,  
+    ".htm":  BSHTMLLoader,  
+    ".xlsx": UnstructuredExcelLoader,  
+    ".xls":  UnstructuredExcelLoader,  
+    ".pptx": UnstructuredPowerPointLoader,  
+}  
+  
+def load_file(file_path: str) -> list[Document]:  
+    ext = Path(file_path).suffix.lower()  
+    loader_cls = LOADER_MAP.get(ext)  
+    if not loader_cls:  
+        raise ValueError(f"不支持的文件类型: {ext}")  
+      
+    # TextLoader 需要指定编码  
+    if loader_cls == TextLoader:  
+        return loader_cls(file_path, encoding="utf-8", autodetect_encoding=True).load()  
+    return loader_cls(file_path).load()
+```
+
 ### 分块
 ##### 分块概念
 <font style="color:rgb(51, 51, 51);">RAG分块是指将长文档切分成多个较小文本片段的过程，每个片段称为"chunk"</font>
