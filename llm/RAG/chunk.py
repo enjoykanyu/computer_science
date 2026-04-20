@@ -78,15 +78,13 @@ def semantic_chunking(text: str):
       
     # embeddings = OllamaEmbeddings(model="qwen3-embedding:0.6b")  
      # 使用 BAAI/bge-m3 中文 Embedding 模型
-    embeddings = HuggingFaceEmbeddings(
-        model_name="BAAI/bge-m3",
-        model_kwargs={'device': 'cpu'},
-        encode_kwargs={'normalize_embeddings': True}
+    embeddings = OllamaEmbeddings(
+        model="bge-m3:latest"  # 使用 Ollama 本地的 bge-m3 模型
     ) 
     splitter = SemanticChunker(  
         embeddings=embeddings,  
         breakpoint_threshold_type="percentile",  
-        breakpoint_threshold_amount=60,  # 必须低于75才能切出3块  
+        breakpoint_threshold_amount=49,  # 必须低于75才能切出3块  
     )  
       
     chunks = splitter.split_text(text)  
