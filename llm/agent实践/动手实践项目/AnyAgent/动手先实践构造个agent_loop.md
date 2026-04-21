@@ -1010,10 +1010,121 @@ for chunk in chunks:
 
 
 
-### embedding选择
+### embedding**<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">向量化</font>**选择
 常见的embedding
 
 <img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776603129387-f802d9ce-7d68-4c15-b0bb-47373e0a0f76.png" width="556" title="" crop="0,0,1,1" id="ub3f5d3ea" class="ne-image">
+
+##### 概念
+<font style="color:rgb(51, 51, 51);">Embedding（嵌入）是将</font>**<font style="color:rgb(51, 51, 51);">离散的符号</font>**<font style="color:rgb(51, 51, 51);">（文字、词、句子）映射到</font>**<font style="color:rgb(51, 51, 51);">连续的高维向量空间</font>**<font style="color:rgb(51, 51, 51);">的过程，使得语义相近的内容在向量空间中距离也相近。</font>
+
+```plain
+"苹果"   → [0.12, -0.34, 0.89, ...]   ← 768维向量  
+"香蕉"   → [0.15, -0.31, 0.85, ...]   ← 语义相近，向量相近  
+"汽车"   → [-0.72, 0.56, -0.23, ...]  ← 语义不同，向量远离
+```
+
+<font style="color:rgb(51, 51, 51);">在 RAG 中的位置</font>
+
+```plain
+文本块 ──► [Embedding模型] ──► 向量 ──► 向量数据库  
+用户问题 ──► [Embedding模型] ──► 向量 ──► 相似度搜索
+```
+
+
+
+**<font style="color:rgb(51, 51, 51);">维度（Dimension）</font>**
+
++ <font style="color:rgb(51, 51, 51);">维度越高，表达能力越强，但存储和计算成本越高</font>
++ <font style="color:rgb(51, 51, 51);">512维 vs 3072维：存储差6倍，检索速度差约3倍</font>
++ <font style="color:rgb(51, 51, 51);"> 支持的向量维度：512 / 768 / 1024 / 1536 / 2048 / 4096 / 6144 / 8192 / 10240</font>
+
+**<font style="color:rgb(51, 51, 51);">最大 Token 数（Context Window）</font>**
+
++ <font style="color:rgb(51, 51, 51);">超出 token 限制的文本会被截断，导致语义丢失</font>
++ <font style="color:rgb(51, 51, 51);">长文档场景必须选 8k+ token 的模型（如 bge-m3、Qwen3-Embedding）</font>
+
+**<font style="color:rgb(51, 51, 51);">语言支持</font>**
+
++ <font style="color:rgb(51, 51, 51);">纯英文模型（bge-small-en）用于中文会严重退化</font>
++ <font style="color:rgb(51, 51, 51);">中文场景推荐：bge-m3、Qwen3-Embedding、text-embedding-3-large</font>
+
+**<font style="color:rgb(51, 51, 51);">对称 vs 非对称检索</font>**
+
++ **<font style="color:rgb(51, 51, 51);">对称</font>**<font style="color:rgb(51, 51, 51);">：问题和文档语义相近（FAQ 匹配）</font>
++ **<font style="color:rgb(51, 51, 51);">非对称</font>**<font style="color:rgb(51, 51, 51);">：短问题检索长文档（RAG 的典型场景）</font>
++ <font style="color:rgb(51, 51, 51);">E5/BGE 系列通过 </font>`**<font style="color:rgb(51, 51, 51);">query:</font>**`<font style="color:rgb(51, 51, 51);"> / </font>`**<font style="color:rgb(51, 51, 51);">passage:</font>**`<font style="color:rgb(51, 51, 51);"> 前缀区分两种模式</font>
+
+
+
+### **<font style="color:rgb(51, 51, 51);">索引存储</font>**
+<font style="color:rgb(51, 51, 51);">为什么需要"索引存储"</font>
+
+<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">RAG 的索引存储做的事情：</font>
+
+1. **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">建索引（离线）</font>**<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">：把所有文档切块、向量化，存入一个支持快速检索的数据库</font>
+2. **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">查索引（在线）</font>**<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">：用户提问时，把问题也向量化，在数据库里快速找到最相似的块</font>
+
+<font style="color:rgb(51, 51, 51);">LLM（大语言模型）有两个硬伤：</font>
+
+1. **<font style="color:rgb(51, 51, 51);">知识截止日期</font>**<font style="color:rgb(51, 51, 51);">：训练数据有时间限制，不知道最新信息</font>
+2. **<font style="color:rgb(51, 51, 51);">上下文窗口有限</font>**<font style="color:rgb(51, 51, 51);">：一次最多处理几万 token，塞不下整本书</font>
+
+<font style="color:rgb(51, 51, 51);">RAG 的解决思路：</font>**<font style="color:rgb(51, 51, 51);">不把所有知识塞给 LLM，而是先检索相关片段，再让 LLM 回答</font>**<font style="color:rgb(51, 51, 51);">。</font>
+
+```plain
+没有 RAG：  
+用户问题 ──────────────────────────────▶ LLM ──▶ 答案（可能胡说）  
+  
+有 RAG：  
+用户问题 ──▶ [检索引擎] ──▶ 相关片段 ──▶ LLM ──▶ 答案（有依据）  
+                ↑  
+           [索引存储] ← 提前把文档处理好存进来
+```
+
+**<font style="color:rgb(51, 51, 51);">索引存储就是那个"检索引擎的数据库"</font>**<font style="color:rgb(51, 51, 51);">，它决定了检索的速度和质量。</font>
+
+##### <font style="color:rgb(51, 51, 51);">向量索引常见的算法</font>
+<font style="color:rgb(51, 51, 51);">向量库不是简单地把所有向量存起来，然后一个个比较（那样太慢）。它会建立</font>**<font style="color:rgb(51, 51, 51);">近似最近邻索引（ANN Index）</font>**<font style="color:rgb(51, 51, 51);">，让搜索从 O(n) 变成 O(log n)。</font>
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776667742057-46d18c27-66d9-44ce-8a39-46fedbb1bea9.png" width="553" title="" crop="0,0,1,1" id="ub73b1139" class="ne-image">
+
++ HNSW
+
+
+
+##### 全文索引算法
+为啥有向量索引还需全文索引呢
+
+
+
+##### <font style="color:rgb(51, 51, 51);">常见索引数据库</font>
+<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);"></font>
+
+<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);"></font>
+
+### **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">查询向量化</font>**
+
+
+### **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">相似度搜索</font>**
+
+
+### <font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">重排序（Reranking）</font>
+
+
+### **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">上下文构建</font>**
+
+
+### **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">提示构建</font>**
+
+
+### <font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">LLM生成</font>
+**<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);"></font>**
+
+### **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">结果后处理</font>**
+
+
+
 
 
 
