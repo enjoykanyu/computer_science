@@ -1060,10 +1060,23 @@ for chunk in chunks:
 ### **<font style="color:rgb(51, 51, 51);">索引存储</font>**
 <font style="color:rgb(51, 51, 51);">为什么需要"索引存储"</font>
 
-<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">RAG 的索引存储做的事情：</font>
+<font style="color:rgb(51, 51, 51);">RAG 的索引存储做的事情：</font>
 
-1. **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">建索引（离线）</font>**<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">：把所有文档切块、向量化，存入一个支持快速检索的数据库</font>
-2. **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">查索引（在线）</font>**<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">：用户提问时，把问题也向量化，在数据库里快速找到最相似的块</font>
+1. **<font style="color:rgb(51, 51, 51);">建索引（离线）</font>**<font style="color:rgb(51, 51, 51);">：把所有文档切块、向量化，存入一个支持快速检索的数据库</font>
+2. **<font style="color:rgb(51, 51, 51);">查索引（在线）</font>**<font style="color:rgb(51, 51, 51);">：用户提问时，把问题也向量化，在数据库里快速找到最相似的块</font>
+
+<font style="color:rgb(51, 51, 51);">RAG 的核心操作是：</font>**<font style="color:rgb(51, 51, 51);">给定一个查询向量，在数百万个文档向量中找出最相似的 K 个</font>**<font style="color:rgb(51, 51, 51);">。</font>
+
+```plain
+暴力做法：  
+  查询向量 q 与每个文档向量 d_i 计算余弦相似度  
+  时间复杂度：O(N × D)  
+  N=100万文档，D=1536维 → 每次查询需要 15亿次浮点运算 → 太慢  
+  
+索引的作用：  
+  用空间换时间，把 O(N) 降到 O(log N) 甚至 O(1)  
+  代价：精度可能略有损失（近似最近邻 ANN）
+```
 
 <font style="color:rgb(51, 51, 51);">LLM（大语言模型）有两个硬伤：</font>
 
@@ -1088,6 +1101,193 @@ for chunk in chunks:
 <font style="color:rgb(51, 51, 51);">向量库不是简单地把所有向量存起来，然后一个个比较（那样太慢）。它会建立</font>**<font style="color:rgb(51, 51, 51);">近似最近邻索引（ANN Index）</font>**<font style="color:rgb(51, 51, 51);">，让搜索从 O(n) 变成 O(log n)。</font>
 
 <img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776667742057-46d18c27-66d9-44ce-8a39-46fedbb1bea9.png" width="553" title="" crop="0,0,1,1" id="ub73b1139" class="ne-image">
+
+###### Flat
+    - <font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">原理</font>
+
+```plain
+存储：把所有向量直接存在一个大矩阵里  
+查询：逐一计算查询向量与所有向量的距离，取最小的 K 个  
+  
+[d1] [d2] [d3] [d4] ... [dN]  
+  ↑    ↑    ↑    ↑         ↑  
+  全部计算距离，排序取 Top-K
+```
+
+    - <font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">特点</font>
+
+| **<font style="color:rgb(51, 51, 51);">维度</font>** | **<font style="color:rgb(51, 51, 51);">说明</font>** |
+| --- | --- |
+| <font style="color:rgb(51, 51, 51);">精度</font> | <font style="color:rgb(51, 51, 51);">100%（精确最近邻，不是近似）</font> |
+| <font style="color:rgb(51, 51, 51);">查询速度</font> | <font style="color:rgb(51, 51, 51);">O(N × D)，最慢</font> |
+| <font style="color:rgb(51, 51, 51);">构建速度</font> | <font style="color:rgb(51, 51, 51);">O(N)，最快（直接存）</font> |
+| <font style="color:rgb(51, 51, 51);">内存</font> | <font style="color:rgb(51, 51, 51);">O(N × D)，全量存储</font> |
+| <font style="color:rgb(51, 51, 51);">适合场景</font> | <font style="color:rgb(51, 51, 51);">数据量 < 10万，精度要求极高</font> |
+
+
+
+
+实践
+
+先下载依赖 pip install faiss-cpu
+
+```python
+import faiss 
+import numpy as np  
+  
+d = 1536  # 向量维度  
+N = 10000  # 文档数量  
+  
+# 构建索引  
+index = faiss.IndexFlatL2(d)  # L2 距离（欧氏距离）  
+# 或者：faiss.IndexFlatIP(d)  # 内积（余弦相似度需先归一化）  
+  
+# 添加向量  
+vectors = np.random.rand(N, d).astype('float32')  
+index.add(vectors)  
+  
+# 查询  
+query = np.random.rand(1, d).astype('float32')  
+distances, indices = index.search(query, k=5)  # 返回最近的5个  
+print(f"最近邻索引: {indices[0]}")  
+print(f"距离: {distances[0]}")
+```
+
+输出
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776690819111-85e51bc8-f2e3-4ade-981f-3afe2410bba4.png" width="504" title="" crop="0,0,1,1" id="u6f396550" class="ne-image">
+
+###### IVF（<font style="color:rgb(51, 51, 51);">Inverted File Index，倒排文件索引</font>）
+**<font style="color:rgb(51, 51, 51);">核心思想：先聚类，再在小范围内搜索</font>**
+
+```plain
+构建阶段：  
+  1. 用 K-Means 把所有向量聚成 nlist 个簇（如 1000 个）  
+  2. 每个向量归属到最近的簇中心  
+  
+  簇1: [d3, d7, d15, ...]  
+  簇2: [d1, d9, d22, ...]  
+  ...  
+  簇1000: [d5, d11, d88, ...]  
+  
+查询阶段：  
+  1. 找到查询向量最近的 nprobe 个簇（如 10 个）  
+  2. 只在这 nprobe 个簇内做精确搜索  
+  3. 返回 Top-K  
+  
+时间复杂度：O(nprobe × N/nlist × D)  
+  nlist=1000, nprobe=10 → 只搜索 1% 的数据
+```
+
++ <font style="color:rgb(51, 51, 51);">图示</font>
+
+```plain
+                      查询向量 q  
+                         │  
+                         ▼  
+              找最近的 nprobe 个簇中心  
+                    /    |    \  
+                   ▼     ▼     ▼  
+                 簇3   簇7   簇15  
+                  │     │     │  
+                  └─────┴─────┘  
+                         │  
+                    在这些簇内  
+                    精确搜索  
+                         │  
+                         ▼  
+                      Top-K 结果
+```
+
++ <font style="color:rgb(51, 51, 51);">关键参数</font>
+
+| **<font style="color:rgb(51, 51, 51);">参数</font>** | **<font style="color:rgb(51, 51, 51);">含义</font>** | **<font style="color:rgb(51, 51, 51);">调优建议</font>** |
+| --- | --- | --- |
+| `**<font style="color:rgb(51, 51, 51);background-color:rgb(229, 229, 229);">nlist</font>**` | <font style="color:rgb(51, 51, 51);">簇的数量</font> | <font style="color:rgb(51, 51, 51);">通常</font><font style="color:rgb(51, 51, 51);"> </font>`**<font style="color:rgb(51, 51, 51);background-color:rgb(229, 229, 229);">4*sqrt(N)</font>**`<br/><font style="color:rgb(51, 51, 51);"> </font><font style="color:rgb(51, 51, 51);">~</font><font style="color:rgb(51, 51, 51);"> </font>`**<font style="color:rgb(51, 51, 51);background-color:rgb(229, 229, 229);">16*sqrt(N)</font>**` |
+| `**<font style="color:rgb(51, 51, 51);background-color:rgb(229, 229, 229);">nprobe</font>**` | <font style="color:rgb(51, 51, 51);">查询时搜索的簇数</font> | <font style="color:rgb(51, 51, 51);">越大越准确，越慢；通常</font><font style="color:rgb(51, 51, 51);"> </font>`**<font style="color:rgb(51, 51, 51);background-color:rgb(229, 229, 229);">nlist/10</font>**` |
+
+
++ **<font style="color:rgb(0, 0, 0);">原理</font>**<font style="color:rgb(13, 13, 13);">：类似现实中按行政区找人。先用 K-Means 算法把所有向量聚类成 </font>`**<font style="color:rgb(13, 13, 13);">nlist</font>**`<font style="color:rgb(13, 13, 13);"> 个簇（类似划分行政区），每个簇有一个中心点。查询时，先算 Query 离哪些中心点最近，只在这些中心点所在的簇里暴力搜索。</font>
++ **<font style="color:rgb(0, 0, 0);">核心参数</font>**<font style="color:rgb(13, 13, 13);">：</font>
+  - `**<font style="color:rgb(13, 13, 13);">nlist</font>**`<font style="color:rgb(13, 13, 13);">：划分多少个区域（建库时设定）。</font>
+  - `**<font style="color:rgb(13, 13, 13);">nprobe</font>**`<font style="color:rgb(13, 13, 13);">：查询时探查几个区域（检索时设定）。</font>`**<font style="color:rgb(13, 13, 13);">nprobe</font>**`<font style="color:rgb(13, 13, 13);"> 越大，越慢但越准。</font>
++ **<font style="color:rgb(0, 0, 0);">优缺点</font>**<font style="color:rgb(13, 13, 13);">：速度快，内存可控；但处于两个区域交界处的向量容易被漏召回。</font>
+
+实践
+
+```plain
+# IVF 聚类索引
+import numpy as np
+import faiss
+import time
+
+# ------- 1. 准备数据 -------
+d = 64
+nb = 100000
+nq = 1
+k = 5
+np.random.seed(1234)
+db_vectors = np.random.random((nb, d)).astype('float32')
+query_vectors = np.random.random((nq, d)).astype('float32')
+
+# ------- 2. 先跑一次 Flat，拿到标准答案 indices_flat -------
+index_flat = faiss.IndexFlatIP(d)
+index_flat.add(db_vectors)
+distances_flat, indices_flat = index_flat.search(query_vectors, k) # 这里生成了 indices_flat！
+
+# ------- 3. 开始跑 IVF -------
+print("="*50 + " IVF 聚类索引 " + "="*50)
+nlist = 100 
+quantizer = faiss.IndexFlatIP(d)
+index_ivf = faiss.IndexIVFFlat(quantizer, d, nlist, faiss.METRIC_INNER_PRODUCT)
+
+# IVF 必须先 train
+index_ivf.train(db_vectors)
+index_ivf.add(db_vectors)
+
+# nprobe 控制查几个桶
+index_ivf.nprobe = 10 
+
+start_time = time.time()
+distances_ivf, indices_ivf = index_ivf.search(query_vectors, k)
+ivf_time = (time.time() - start_time) * 1000
+
+# 现在这行就不会报错了！
+recall_ivf = len(set(indices_flat[0]) & set(indices_ivf[0])) / k
+
+print(f"耗时: {ivf_time:.2f} 毫秒")
+print(f"Flat标准答案 ID: {indices_flat[0]}")
+print(f"IVF查出来的  ID: {indices_ivf[0]}")
+print(f"⚠️ 召回率: {recall_ivf * 100}%")
+```
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776823722811-7554e0a0-c2e7-4eeb-a8c3-ad06e93189c7.png" width="398" title="" crop="0,0,1,1" id="u44a5aea9" class="ne-image">
+
+开源看到召回率只有40%
+
+提高查询桶的数量到30% index_ivf.nprobe = 30
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776823834160-1586ef99-d4fe-4727-b46c-822b039d8c47.png" width="403" title="" crop="0,0,1,1" id="uf33dfcdc" class="ne-image">
+
+为啥呢
+
+<font style="color:rgb(13, 13, 13);">在完全均匀分布的高维空间里：</font>**<font style="color:rgb(0, 0, 0);">你最相似的 5 个向量，极有可能散布在完全不同的几个切瓜区域里。</font>**
+
+<font style="color:rgb(13, 13, 13);">标准答案：</font>`<font style="color:rgb(13, 13, 13);">[70195, 56312, 21414, 9304, 14750]</font>`
+
++ <font style="color:rgb(13, 13, 13);">假设 70195 和 9304 刚好离查询点比较近，它们所在的区域被你探查到了（nprobe=10 就能找到）。</font>
++ <font style="color:rgb(13, 13, 13);">但 56312、21414、14750 虽然和查询点距离近，</font>**<font style="color:rgb(0, 0, 0);">它们却处在另外几个离查询点中心较远的西瓜块里</font>**<font style="color:rgb(13, 13, 13);">。</font>
++ <font style="color:rgb(13, 13, 13);">即便你把 </font>`**<font style="color:rgb(13, 13, 13);">nprobe</font>**`<font style="color:rgb(13, 13, 13);"> 扩大到了 30（查了 30 个片区），那 3 个人所在的片区可能排在第 31、35、40 名，</font>**<font style="color:rgb(0, 0, 0);">依然在你的探查盲区里！</font>**
+
+<font style="color:rgb(13, 13, 13);">这就是 IVF 在随机高维数据上的软肋：</font>**<font style="color:rgb(0, 0, 0);">聚类中心（片区大门）离你近，不代表你最想找的人就在这几个片区里。</font>**
+
+修改成70 index_ivf.nprobe = 70
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776823924186-086d0786-0d43-46a4-93f5-610897cb54d6.png" width="402" title="" crop="0,0,1,1" id="u641a66c1" class="ne-image">
+
+可以看到召回率提高了
+
+
 
 + HNSW
 
