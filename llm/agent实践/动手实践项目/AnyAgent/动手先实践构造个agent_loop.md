@@ -1291,7 +1291,93 @@ print(f"⚠️ 召回率: {recall_ivf * 100}%")
 
 + HNSW
 
+<font style="color:rgb(13, 13, 13);">HNSW 的全称是 </font>**<font style="color:rgb(0, 0, 0);">Hierarchical</font>**<font style="color:rgb(13, 13, 13);"> Navigable Small World。核心就在于 </font>**<font style="color:rgb(0, 0, 0);">Hierarchical（分层）</font>**<font style="color:rgb(13, 13, 13);">。</font>
 
+<font style="color:rgb(13, 13, 13);">想象一栋有三层楼的大楼，每层都铺了一张网：</font>
+
++ **<font style="color:rgb(0, 0, 0);">顶层（Layer 2）</font>**<font style="color:rgb(13, 13, 13);">：网眼最大，节点最少，线最长。只有几个核心枢纽（比如北京、上海、广州）。</font>
++ **<font style="color:rgb(0, 0, 0);">中层（Layer 1）</font>**<font style="color:rgb(13, 13, 13);">：网眼中等，节点增多，线变短。有区域中心城市（比如省会城市）。</font>
++ **<font style="color:rgb(0, 0, 0);">底层（Layer 0）</font>**<font style="color:rgb(13, 13, 13);">：网眼最密，</font>**<font style="color:rgb(0, 0, 0);">包含所有的 10 万个向量节点</font>**<font style="color:rgb(13, 13, 13);">，线最短。是具体的街道和楼宇。</font>
+
+**<font style="color:rgb(0, 0, 0);">一个节点出现在高层，它必然在所有的低层也存在！</font>**<font style="color:rgb(13, 13, 13);">（广州在 Layer 2，那它也在 Layer 1 和 Layer 0）。</font>
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776909451464-90ec62c4-2d3c-48ea-a254-e642bc1cb6dd.png" width="997" title="" crop="0,0,1,1" id="u1b51d59b" class="ne-image">
+
+(_<font style="color:rgb(13, 13, 13);background-color:rgb(248, 248, 248);">实线是同层的朋友关系，虚线是下楼梯的通道</font>_)
+
+搜索过程
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776909665459-7360307a-21bb-4cbc-a4f1-762a1e075e4a.png" width="1135" title="" crop="0,0,1,1" id="u4cba4d9b" class="ne-image">
+
+
+
+1. **<font style="color:rgb(0, 0, 0);">Layer 2</font>**<font style="color:rgb(13, 13, 13);">：从入口 </font>`**<font style="color:rgb(13, 13, 13);">C</font>**`<font style="color:rgb(13, 13, 13);"> 开始。发现 </font>`**<font style="color:rgb(13, 13, 13);">D</font>**`<font style="color:rgb(13, 13, 13);"> 离 </font>`**<font style="color:rgb(13, 13, 13);">Q</font>**`<font style="color:rgb(13, 13, 13);"> 更近，跳到 </font>`**<font style="color:rgb(13, 13, 13);">D</font>**`<font style="color:rgb(13, 13, 13);">。在 Layer 2 找不到比 </font>`**<font style="color:rgb(13, 13, 13);">D</font>**`<font style="color:rgb(13, 13, 13);"> 更近的了，</font>**<font style="color:rgb(0, 0, 0);">下楼梯</font>**<font style="color:rgb(13, 13, 13);">。</font>
+2. **<font style="color:rgb(0, 0, 0);">Layer 1</font>**<font style="color:rgb(13, 13, 13);">：以 </font>`**<font style="color:rgb(13, 13, 13);">D</font>**`<font style="color:rgb(13, 13, 13);"> 为起点。发现 </font>`**<font style="color:rgb(13, 13, 13);">A</font>**`<font style="color:rgb(13, 13, 13);"> 离 </font>`**<font style="color:rgb(13, 13, 13);">Q</font>**`<font style="color:rgb(13, 13, 13);"> 更近，跳到 </font>`**<font style="color:rgb(13, 13, 13);">A</font>**`<font style="color:rgb(13, 13, 13);">。在 Layer 1 找不到比 </font>`**<font style="color:rgb(13, 13, 13);">A</font>**`<font style="color:rgb(13, 13, 13);"> 更近的了，</font>**<font style="color:rgb(0, 0, 0);">下楼梯</font>**<font style="color:rgb(13, 13, 13);">。</font>
+3. **<font style="color:rgb(0, 0, 0);">Layer 0</font>**<font style="color:rgb(13, 13, 13);">：以 </font>`**<font style="color:rgb(13, 13, 13);">A</font>**`<font style="color:rgb(13, 13, 13);"> 为起点。这是最底层，不仅找最近，还要把 </font>`**<font style="color:rgb(13, 13, 13);">A</font>**`<font style="color:rgb(13, 13, 13);"> 的朋友、朋友的朋友都扫一遍（范围由 </font>`**<font style="color:rgb(13, 13, 13);">efSearch</font>**`<font style="color:rgb(13, 13, 13);"> 决定），最终锁定最近的人。</font>
+
+<font style="color:rgb(13, 13, 13);"></font>
+
+<font style="color:rgb(13, 13, 13);">实践</font>
+
+<font style="color:rgb(13, 13, 13);"></font>
+
+```plain
+# ==========================================
+# 1. 准备统一的模拟数据
+# ==========================================
+d = 64        # 向量维度
+nb = 100000   # 知识库数据量 (10万条)
+nq = 1        # 提问数量
+k = 5         # 想要查找的 Top-K 结果数
+
+np.random.seed(1234)
+db_vectors = np.random.random((nb, d)).astype('float32')
+query_vectors = np.random.random((nq, d)).astype('float32')
+
+print("🚀 数据准备完毕！知识库: 10万条64维向量\n")
+
+
+# ==========================================
+# 2. Flat 暴力检索 (必须先跑这个，拿到标准答案！)
+# ==========================================
+print("="*50 + " 1. Flat 暴力检索 " + "="*50)
+index_flat = faiss.IndexFlatIP(d) 
+index_flat.add(db_vectors)
+
+start_time = time.time()
+distances_flat, indices_flat = index_flat.search(query_vectors, k) # 这里生成了标准答案 indices_flat
+flat_time = (time.time() - start_time) * 1000
+
+print(f"耗时: {flat_time:.2f} 毫秒")
+print(f"最相似的 Top-{k} ID: {indices_flat[0]}")
+print("👉 这便是【标准答案】，后面都要跟它比！\n")
+
+
+# ==========================================
+# 3. HNSW 图索引
+# ==========================================
+print("="*50 + " 2. HNSW 图索引 " + "="*50)
+M = 32
+index_hnsw = faiss.IndexHNSWFlat(d, M, faiss.METRIC_INNER_PRODUCT)
+index_hnsw.hnsw.efConstruction = 200
+index_hnsw.add(db_vectors)
+index_hnsw.hnsw.efSearch = 64
+
+start_time = time.time()
+distances_hnsw, indices_hnsw = index_hnsw.search(query_vectors, k)
+hnsw_time = (time.time() - start_time) * 1000
+
+recall_hnsw = len(set(indices_flat[0]) & set(indices_hnsw[0])) / k
+
+print(f"耗时: {hnsw_time:.2f} 毫秒")
+print(f"最相似的 Top-{k} ID: {indices_hnsw[0]}")
+print(f"✅ 召回率: {recall_hnsw * 100}%\n")
+
+```
+
+<font style="color:rgb(13, 13, 13);">输出</font>
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776909810081-ca937c5d-4397-4278-bef1-a941cc9eeb36.png" width="409" title="" crop="0,0,1,1" id="u0fe48410" class="ne-image">
 
 ##### 全文索引算法
 为啥有向量索引还需全文索引呢

@@ -120,4 +120,3 @@ recall_hnsw = len(set(indices_flat[0]) & set(indices_hnsw[0])) / k
 print(f"耗时: {hnsw_time:.2f} 毫秒")
 print(f"最相似的 Top-{k} ID: {indices_hnsw[0]}")
 print(f"✅ 召回率: {recall_hnsw * 100}%\n")
-
