@@ -1289,8 +1289,7 @@ print(f"⚠️ 召回率: {recall_ivf * 100}%")
 
 
 
-+ HNSW
-
+###### HNSW
 <font style="color:rgb(13, 13, 13);">HNSW 的全称是 </font>**<font style="color:rgb(0, 0, 0);">Hierarchical</font>**<font style="color:rgb(13, 13, 13);"> Navigable Small World。核心就在于 </font>**<font style="color:rgb(0, 0, 0);">Hierarchical（分层）</font>**<font style="color:rgb(13, 13, 13);">。</font>
 
 <font style="color:rgb(13, 13, 13);">想象一栋有三层楼的大楼，每层都铺了一张网：</font>
@@ -1378,6 +1377,106 @@ print(f"✅ 召回率: {recall_hnsw * 100}%\n")
 <font style="color:rgb(13, 13, 13);">输出</font>
 
 <img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1776909810081-ca937c5d-4397-4278-bef1-a941cc9eeb36.png" width="409" title="" crop="0,0,1,1" id="u0fe48410" class="ne-image">
+
+
+
+###### LSH
+**<font style="color:rgb(51, 51, 51);">相似的向量以高概率映射到同一个桶（bucket），不相似的以高概率映射到不同桶</font>**<font style="color:rgb(51, 51, 51);">，从而实现近似最近邻搜索（ANN）</font>
+
+**<font style="color:rgb(0, 0, 0);">动制造冲突——让高维空间中距离近的向量，以极大概率映射到同一个哈希桶中。</font>**<font style="color:rgb(13, 13, 13);"> 从而将暴力计算降维为哈希表的</font>_<font style="color:rgb(13, 13, 13);">O</font>_<font style="color:rgb(13, 13, 13);">(1)查询。</font>
+
+<font style="color:rgb(13, 13, 13);background-color:rgb(248, 248, 248);">实践</font>
+
+```plain
+import numpy as np  
+from collections import defaultdict  
+  
+class LSH:  
+    """  
+    基于随机超平面投影的 LSH（适用于余弦相似度）  
+    """  
+    def __init__(self, n_planes: int, n_tables: int, dim: int):  
+        """  
+        n_planes: 每张哈希表的超平面数量（越多越精确，但越慢）  
+        n_tables: 哈希表数量（越多召回率越高）  
+        dim:      向量维度  
+        """  
+        self.n_planes = n_planes  
+        self.n_tables = n_tables  
+        self.dim = dim  
+        # 每张表随机生成 n_planes 个超平面法向量  
+        self.planes = [  
+            np.random.randn(n_planes, dim) for _ in range(n_tables)  
+        ]  
+        self.tables = [defaultdict(list) for _ in range(n_tables)]  
+  
+    def _hash(self, vec: np.ndarray, table_idx: int) -> tuple:  
+        """将向量投影到超平面，取符号作为哈希码"""  
+        projections = self.planes[table_idx] @ vec  # shape: (n_planes,)  
+        return tuple((projections > 0).astype(int))  
+  
+    def index(self, vec: np.ndarray, item_id):  
+        """将向量加入索引"""  
+        for i in range(self.n_tables):  
+            key = self._hash(vec, i)  
+            self.tables[i][key].append(item_id)  
+  
+    def query(self, vec: np.ndarray) -> set:  
+        """返回候选集合（与查询向量在同一桶的所有 item）"""  
+        candidates = set()  
+        for i in range(self.n_tables):  
+            key = self._hash(vec, i)  
+            candidates.update(self.tables[i][key])  
+        return candidates  
+  
+  
+def cosine_similarity(a, b):  
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-10)  
+  
+  
+# ── 测试 ──────────────────────────────────────────────────────────────────────  
+np.random.seed(42)  
+DIM = 64  
+N = 1000  
+  
+# 生成 1000 个随机向量作为数据库  
+db_vecs = np.random.randn(N, DIM)  
+db_vecs /= np.linalg.norm(db_vecs, axis=1, keepdims=True)  # 归一化  
+  
+# 建立 LSH 索引  
+lsh = LSH(n_planes=10, n_tables=5, dim=DIM)  
+for idx, vec in enumerate(db_vecs):  
+    lsh.index(vec, idx)  
+  
+# 查询向量（与 db_vecs[0] 非常相似）  
+query = db_vecs[0] + np.random.randn(DIM) * 0.05  
+query /= np.linalg.norm(query)  
+  
+# LSH 候选集  
+candidates = lsh.query(query)  
+print(f"候选集大小: {len(candidates)} / {N}")  
+  
+# 在候选集中精确计算余弦相似度，找最近邻  
+best_id, best_sim = -1, -1  
+for cid in candidates:  
+    sim = cosine_similarity(query, db_vecs[cid])  
+    if sim > best_sim:  
+        best_sim, best_id = sim, cid  
+  
+# 暴力搜索（ground truth）  
+true_sims = [cosine_similarity(query, db_vecs[i]) for i in range(N)]  
+true_best = int(np.argmax(true_sims))  
+  
+print(f"LSH 找到: id={best_id}, 相似度={best_sim:.4f}")  
+print(f"暴力搜索: id={true_best}, 相似度={true_sims[true_best]:.4f}")  
+print(f"结果一致: {best_id == true_best}")
+```
+
+<font style="color:rgb(13, 13, 13);background-color:rgb(248, 248, 248);">输出</font>
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777037376564-b018359c-d655-4d0b-a62c-2410b3559142.png" width="416" title="" crop="0,0,1,1" id="udb0c4a73" class="ne-image">
+
+<font style="color:rgb(13, 13, 13);background-color:rgb(248, 248, 248);"></font>
 
 ##### 全文索引算法
 为啥有向量索引还需全文索引呢
