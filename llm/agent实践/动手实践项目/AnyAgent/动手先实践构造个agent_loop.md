@@ -2367,9 +2367,321 @@ driver.close()
 <font style="color:rgb(13, 13, 13);"></font>
 
 ### **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">相似度搜索</font>**
+RAG 为什么需要相似度算法与重排序
+
+通过上述步骤存储了相关的文档，如何在大量的文档中找到最匹配的文档呢，因此引入了相似度算法
+
+给定查询 qq q 和文档 dd d，嵌入模型 ff f 将它们映射为向量<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777175807075-830e5451-f31a-47fc-aa99-355c938a76e7.png" width="353" title="" crop="0,0,1,1" id="u2e6363db" class="ne-image">
+
+常见的相似度算法如下
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777175842181-9a016da5-05a8-49ff-ba0b-2454d91f9c28.png" width="740" title="" crop="0,0,1,1" id="u3df8729a" class="ne-image">
+
+##### <font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">底层机制</font>
+<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">Embedding 模型把文本映射到高维向量空间（通常 768~4096 维）。语义相近的文本，其向量在空间中距离更近。</font>
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777182836722-a51fecef-a41a-42a5-9b83-7d7768d054b3.png" width="465" title="" crop="0,0,1,1" id="u4309892f" class="ne-image">
+
+
+
+<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">Embedding 模型的训练目标就是让语义相近的文本向量距离近，语义无关的距离远。这是所有相似度算法的基础假设</font>
+
+##### <font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">和向量索引算法的区别</font>
+<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">看到这里感觉和之前的向量索引的常见算法优点相同</font>
+
+**相似度算法**是度量函数，用来计算两个向量/对象之间的距离或相似程度
+
+**ANN 算法**是搜索优化技术，用来在海量数据中快速找到最相似的 k 个邻居，但不保证绝对精确
+
+**之前的向量索引算法都是ANN 依赖相似度算法**：得先定义"距离"，ANN 才知道什么叫"近邻"。比如 HNSW 可以配合余弦距离或欧氏距离使用。
+
+###### 区别
++ **相似度算法**：定义"什么叫像"，对比两个向量是否相似的标准
++ **ANN 算法**：解决"怎么快速找到像的"，怎样去快速找到这个相关的向量
+
+即ANN算法定义了怎样快速找的过程，相似度算法定义了找到了如何去确保找到的向量相似度有多少
+
+###### 举例子
+假设你在一个有 100 万人的体育场里找"和你长得最像的 10 个人"。
+
+**相似度算法** = **尺子**  
+它是一把尺子，用来量"你和某个人有多像"。比如：
+
++ 测脸型轮廓 → 欧氏距离
++ 测五官比例 → 余弦相似度
++ 测身高体重 → 曼哈顿距离
+
+**ANN 算法** = **找人策略**  
+它是一套聪明的找人方法，避免你傻乎乎地跟 100 万人一个个比对。比如：
+
++ 先按区域分组（LSH）
++ 建立"长得像的人互相认识"的社交网络（HNSW）
++ 按肤色、发色先筛一遍（IVF）
+
+
+
+##### 相似度算法
+###### **<font style="color:rgb(51, 51, 51);">余弦相似度</font>**
+越接近1越相似
+
++ 手动实现余弦相似度
+
+```plain
+import numpy as np
+
+# ① 定义两个模拟的嵌入向量 (假设维度为4)
+vec_query = np.array([0.5, 0.2, -0.1, 0.8])
+vec_doc = np.array([0.6, 0.1, -0.2, 0.7])
+
+# ② 计算点积 (分子)
+# ① 这行做了什么：计算两个向量的内积（对应元素相乘后求和）
+# ② 为什么这样写：余弦相似度公式的分子部分，衡量向量在同方向上的投影累积
+# ③ 如果改成改用减法：将变成计算差异，而非相似度累加
+dot_product = np.dot(vec_query, vec_doc)
+
+# ③ 计算范数乘积 (分母)
+# ① 这行做了什么：分别求两个向量的L2范数（欧氏长度）并相乘
+# ② 为什么这样写：用于归一化，消除文档长度（向量模长）对相似度的影响
+# ③ 如果改成去掉分母：等价于计算点积，长文档会因为有更多非零元素而获得不公平的高分
+norm_query = np.linalg.norm(vec_query)
+norm_doc = np.linalg.norm(vec_doc)
+
+# ④ 计算余弦相似度
+cosine_sim = dot_product / (norm_query * norm_doc)
+
+print(f"余弦相似度: {cosine_sim:.4f}")
+# 预期输出: 接近 0.96，说明两者高度相似
+
+```
+
+输出
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777183812481-d14d2389-c417-467e-95a9-a62baccd0987.png" width="523" title="" crop="0,0,1,1" id="ua3860546" class="ne-image">
+
++ langchain实现
+
+
+
+```plain
+# langchain 实现余弦相似度
+from langchain_ollama import OllamaEmbeddings
+from langchain_chroma import Chroma
+ 
+# 初始化（使用 bge-m3，中文效果更好的嵌入模型）
+embeddings = OllamaEmbeddings(model="bge-m3")
+ 
+# 创建向量库
+docs = ["猫很可爱", "狗爱玩球", "鸟会飞翔"]
+vectorstore = Chroma.from_texts(texts=docs, embedding=embeddings)
+ 
+# 搜索
+results = vectorstore.similarity_search_with_relevance_scores("狗", k=2)
+ 
+# 输出
+for doc, score in results:
+    print(f"{score:.3f} - {doc.page_content}")
+```
+
+输出
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777184349602-71f28804-3031-484a-90b5-669145a81349.png" width="451" title="" crop="0,0,1,1" id="ud8420390" class="ne-image">
+
+若把搜索的内容改成了计算机
+
+results = vectorstore.similarity_search_with_relevance_scores("计算机", k=2)
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777184386041-31116fde-2c86-4d13-a6b6-3c2ba9309e2f.png" width="392" title="" crop="0,0,1,1" id="u9b15fef0" class="ne-image">
+
+可以看到余弦相似度很低了
+
++ langgraph实现
+
+```plain
+from langchain_chroma import Chroma
+from langchain_ollama import OllamaEmbeddings
+from typing import TypedDict, Annotated
+from langgraph.graph import StateGraph, END
+import operator
+
+class AgentState(TypedDict):
+    query: str
+    documents: Annotated[list, operator.add]
+    similarity_score: float
+    route: str
+    answer: str
+
+# ✅ 初始化 Embedding
+embeddings = OllamaEmbeddings(model="bge-m3")
+
+knowledge_base = [
+    "猫是独立的动物，喜欢晒太阳和睡觉",
+    "狗是忠诚的伙伴，需要每天遛弯",
+    "仓鼠是夜行动物，白天基本在睡觉",
+    "Python 是一种编程语言，广泛用于数据科学",
+    "JavaScript 用于网页开发",
+    "量子力学是一种物理理论，用于描述微小粒子（如电子、原子等）的行为"
+]
+
+# 🚀 关键修改：使用内存模式，且不指定 persist_directory
+# 这样每次运行都是全新实例，绝对保证使用的是 cosine 度量
+vectorstore = Chroma.from_texts(
+    texts=knowledge_base,
+    embedding=embeddings,
+    collection_metadata={"hnsw:space": "cosine"}  # ✅ 强制余弦距离
+)
+
+# ✅ 修正后的检索节点
+def retrieve_node(state: AgentState):
+    query = state["query"]
+    results = vectorstore.similarity_search_with_score(query, k=3)
+    
+    if not results:
+        return {"documents": [], "similarity_score": 0.0}
+    
+    # 🚨 核心知识点：Chroma 返回的 score 到底是什么？
+    # 当 collection_metadata={"hnsw:space": "cosine"} 时，
+    # Chroma 返回的 score 是【余弦距离】 = 1 - 余弦相似度
+    # 余弦距离越小，说明越相似（0表示完全一样）
+    
+    top_distance = results[0][1]
+    # 转换为余弦相似度：1 - 距离
+    # 使用 max(0, min(1, ...)) 做截断保护，防止浮点数溢出
+    top_similarity = max(0, min(1, 1 - top_distance))
+    
+    # 打印所有召回文档的距离和相似度，方便观察分布
+    print(f"--- 检索详情 ---")
+    for doc, dist in results:
+        sim = max(0, min(1, 1 - dist))
+        print(f"  文档: {doc.page_content[:15]}... | 距离: {dist:.4f} | 相似度: {sim:.4f}")
+    
+    docs = [doc.page_content for doc, _ in results]
+    
+    return {
+        "documents": docs,
+        "similarity_score": top_similarity
+    }
+
+def route_decision(state: AgentState):
+    score = state["similarity_score"]
+    if score > 0.7:
+        route = "high_confidence"
+    elif score > 0.4:
+        route = "medium_confidence"
+    else:
+        route = "low_confidence"
+    print(f"📍 路由: {route} (相似度: {score:.3f})")
+    return {"route": route}
+
+def high_confidence_answer(state: AgentState):
+    doc = state["documents"][0] if state["documents"] else "无相关信息"
+    return {"answer": f"✅ 高置信：{doc}"}
+
+def medium_confidence_answer(state: AgentState):
+    docs = " | ".join(state["documents"][:2])
+    return {"answer": f"⚠️ 中等置信：{docs}"}
+
+def low_confidence_answer(state: AgentState):
+    return {"answer": "❌ 抱歉，知识库中没有相关信息"}
+
+# 构建图
+workflow = StateGraph(AgentState)
+workflow.add_node("retrieve", retrieve_node)
+workflow.add_node("route", route_decision)
+workflow.add_node("high_answer", high_confidence_answer)
+workflow.add_node("medium_answer", medium_confidence_answer)
+workflow.add_node("low_answer", low_confidence_answer)
+
+workflow.set_entry_point("retrieve")
+workflow.add_edge("retrieve", "route")
+workflow.add_conditional_edges(
+    "route",
+    lambda state: state["route"],
+    {
+        "high_confidence": "high_answer",
+        "medium_confidence": "medium_answer",
+        "low_confidence": "low_answer"
+    }
+)
+workflow.add_edge("high_answer", END)
+workflow.add_edge("medium_answer", END)
+workflow.add_edge("low_answer", END)
+
+app = workflow.compile()
+
+# 测试
+if __name__ == "__main__":
+    queries = [
+        "猫的特点是什么？",
+        "编程语言有哪些？",
+        "量子力学的原理是什么？"
+    ]
+    
+    for query in queries:
+        print(f"\n{'='*60}\n❓ {query}\n{'='*60}")
+        result = app.invoke({
+            "query": query,
+            "documents": [],
+            "similarity_score": 0.0,
+            "route": "",
+            "answer": ""
+        })
+        print(f"💬 {result['answer']}\n")
+```
+
+输出
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777190376830-4bf62dac-2a65-4548-a4db-344bde1ec5c0.png" width="514" title="" crop="0,0,1,1" id="ud074f7bb" class="ne-image">
+
+###### **<font style="color:rgb(51, 51, 51);">点积（内积）</font>**
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777206843214-67d41141-77af-4ba3-b086-9ac7461df9aa.png" width="315" title="" crop="0,0,1,1" id="ubc74441f" class="ne-image">
+
+<font style="color:rgb(13, 13, 13);">衡量两个向量在方向上的对齐程度以及自身幅度的乘积。如果向量已归一化（长度为1），点积等价于余弦相似度</font>
+
+<font style="color:rgb(13, 13, 13);">概念：两个相同维度的向量，对应位置的元素相乘后再求和，衡量两个向量在方向上的对齐程度以及自身幅度的综合效应。</font>
+
++ **<font style="color:rgb(0, 0, 0);">类比</font>**<font style="color:rgb(13, 13, 13);">：两个人合力推车。如果两人朝同一方向推（方向对齐），且力气都很大（幅度大），车推得就快（点积大）；如果一人往前推、一人往后拉（方向相反），车可能倒退（点积为负）。</font>
+
+<font style="color:rgb(13, 13, 13);background-color:rgb(248, 248, 248);"></font>
+
+###### **<font style="color:rgb(51, 51, 51);">欧氏距离</font>**
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777206887130-dfebd7df-b00a-4bfc-a9a1-d192623d4c12.png" width="250" title="" crop="0,0,1,1" id="u24237690" class="ne-image">
+
+<font style="color:rgb(13, 13, 13);">空间中两点之间的直线距离，差异越小距离越近。</font>
+
+<font style="color:rgb(13, 13, 13);background-color:rgb(248, 248, 248);">概</font><font style="color:rgb(13, 13, 13);">念：在 n 维实数空间中，连接两点的线段长度，计算为各维度差值平方和的平方根，衡量空间两点的绝对物理差异。</font>
+
++ **<font style="color:rgb(0, 0, 0);">类比</font>**<font style="color:rgb(13, 13, 13);">：用直尺在地图上量出 A 地和 B 地的直线距离。距离越小，说明两地越靠近。</font>
+
+###### **<font style="color:rgb(51, 51, 51);">BM25</font>**
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777207132474-c9e41e42-46a6-4c74-a302-2185937aa375.png" width="433" title="" crop="0,0,1,1" id="ueb713267" class="ne-image">
+
+1. **<font style="color:rgb(0, 0, 0);">DF（逆文档频率）</font>**<font style="color:rgb(13, 13, 13);">：词越罕见，IDF 越大，区分度越高。</font>
+2. **<font style="color:rgb(0, 0, 0);">TF 饱和度（</font>**_**<font style="color:rgb(0, 0, 0);">k</font>**_**<font style="color:rgb(0, 0, 0);">1</font>****<font style="color:rgb(0, 0, 0);"> 控制）</font>**<font style="color:rgb(13, 13, 13);">：词频增长带来的边际收益递减，防止关键词堆砌。</font>
+3. **<font style="color:rgb(0, 0, 0);">文档长度归一化（</font>**_**<font style="color:rgb(0, 0, 0);">b</font>**_**<font style="color:rgb(0, 0, 0);"> 控制）</font>**<font style="color:rgb(13, 13, 13);">：</font>_<font style="color:rgb(13, 13, 13);">b</font>_<font style="color:rgb(13, 13, 13);">=1 时完全按长度惩罚长文档，</font>_<font style="color:rgb(13, 13, 13);">b</font>_<font style="color:rgb(13, 13, 13);">=0 时忽略长度影响。</font>
+
+<font style="color:rgb(13, 13, 13);">概念：基于概率检索模型的词袋算法，通过综合词频（TF）、逆文档频率（IDF）和文档长度归一化，计算查询与文档的词汇级相关性得分。</font>
+
++ **<font style="color:rgb(0, 0, 0);">类比</font>**<font style="color:rgb(13, 13, 13);">：老师批改简答题。答出冷门高级词汇加分多（IDF高），同一个词反复写只加一点点分（TF饱和），废话连篇的答卷要扣分（文档长度惩罚）。</font>
+
+###### 汉明距离
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777207238348-5eff57a1-95ce-4ea6-b3d3-5e13e0fffa5a.png" width="196" title="" crop="0,0,1,1" id="ubdc31d75" class="ne-image">
+
+<font style="color:rgb(13, 13, 13);">1 的个数为 1，汉明距离为 1</font>
+
+<font style="color:rgb(13, 13, 13);">比较两个等长二进制字符串在相同位置上值不同的数量。通过异或（XOR）运算后统计 1 的个数实现。</font>
+
+**<font style="color:rgb(0, 0, 0);">类比</font>**<font style="color:rgb(13, 13, 13);">：两排开关，相同位置开关状态（开/关）不一样的数量。只有一个开关状态不同，距离就是1</font>
+
 
 
 ### <font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">重排序（Reranking）</font>
+区分下召回率 vs 精确率（Recall vs Precision）
+
++ **召回率（Recall）**：相关文档中被成功找到的比例 —— "不漏掉"
++ **精确率（Precision）**：返回结果中真正相关的比例 —— "不选错"
+
+相似度算法保证的召回率，重排序保证精确率
+
 
 
 ### **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">上下文构建</font>**
