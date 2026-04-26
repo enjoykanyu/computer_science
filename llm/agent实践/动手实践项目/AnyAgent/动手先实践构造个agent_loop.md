@@ -1097,6 +1097,11 @@ for chunk in chunks:
 
 **<font style="color:rgb(51, 51, 51);">索引存储就是那个"检索引擎的数据库"</font>**<font style="color:rgb(51, 51, 51);">，它决定了检索的速度和质量。</font>
 
+##### <font style="color:rgb(0, 0, 0);">ANN (近似最近邻)</font>
++ **<font style="color:rgb(0, 0, 0);">定义</font>**<font style="color:rgb(13, 13, 13);">：不要求找到绝对最近的邻居，只要求在极短时间内找到大概率很近的邻居。</font>
++ **<font style="color:rgb(0, 0, 0);">类比</font>**<font style="color:rgb(13, 13, 13);">：在人群中找最像你朋友的人，KNN是给所有人量一遍三围（极准极慢），ANN是只看大概身高体型（略准极快）。</font>
++ **<font style="color:rgb(0, 0, 0);">一句话记忆</font>**<font style="color:rgb(13, 13, 13);">：用微小精度换取指数级速度。</font>
+
 ##### <font style="color:rgb(51, 51, 51);">向量索引常见的算法</font>
 <font style="color:rgb(51, 51, 51);">向量库不是简单地把所有向量存起来，然后一个个比较（那样太慢）。它会建立</font>**<font style="color:rgb(51, 51, 51);">近似最近邻索引（ANN Index）</font>**<font style="color:rgb(51, 51, 51);">，让搜索从 O(n) 变成 O(log n)。</font>
 
@@ -1669,12 +1674,697 @@ for rank, (doc_id, score) in enumerate(results, 1):
 
 
 ##### <font style="color:rgb(51, 51, 51);">常见索引数据库</font>
-<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);"></font>
+###### <font style="color:rgb(0, 0, 0);">FAISS</font>
+<font style="color:rgb(13, 13, 13);">只是一个</font>**<font style="color:rgb(0, 0, 0);">算法库（类似NumPy）</font>**<font style="color:rgb(13, 13, 13);">，它没有网络层、没有WAL日志、不支持多进程安全读写</font>
+
+<font style="color:rgb(13, 13, 13);">Milvus/Qdrant的底层可能调用了FAISS，但它们在外面包了一层完整的数据库管理系统（CRUD、权限、分布式）</font>
+
+<font style="color:rgb(51, 51, 51);">可以精细控制索引算法（IVF、PQ、HNSW 等参数）</font><font style="color:rgb(13, 13, 13);"></font>
+
+###### <font style="color:rgb(0, 0, 0);">Milvus</font>
+<font style="color:rgb(13, 13, 13);">面向</font>**<font style="color:rgb(0, 0, 0);">大规模生产集群</font>**<font style="color:rgb(13, 13, 13);">，云原生、存储计算分离、多索引、多硬件，偏“重”但可扩展到百亿级</font>
+
+<font style="color:rgb(13, 13, 13);">底层可能调用了FAISS，但它们在外面包了一层完整的数据库管理系统（CRUD、权限、分布式）</font>
+
++ <font style="color:rgb(13, 13, 13);background-color:rgb(248, 248, 248);">实践</font>
+
+```plain
+from pymilvus import MilvusClient
+import numpy as np
+
+client = MilvusClient("http://localhost:19530")
+
+# 0. 如果之前有残留的 demo 集合，先删掉（避免第二次运行报错）
+if client.has_collection("demo"):
+    client.drop_collection("demo")
+
+# 1. 先准备索引参数
+index_params = client.prepare_index_params()
+index_params.add_index(
+    field_name="vector",
+    index_type="HNSW",
+    metric_type="COSINE",
+    params={
+        "M": 16,
+        "efConstruction": 200,
+    },
+)
+
+# 2. 创建集合时，直接把 index_params 传进去！(关键修改)
+client.create_collection(
+    collection_name="demo",
+    dimension=128,
+    metric_type="COSINE",
+    auto_id=True,
+    enable_dynamic_field=True,
+    index_params=index_params  # <--- 加上这一行，一步到位建表+建索引
+)
+
+# 3. 插入数据（结合上一次的修复，auto_id=True时不传id）
+dim = 128
+num_vectors = 1000
+vectors = np.random.random((num_vectors, dim)).astype(np.float32)
+data = [
+    {"vector": vectors[i], "text": f"doc-{i}"} 
+    for i in range(num_vectors)
+]
+client.insert(collection_name="demo", data=data)
+
+# 4. 加载集合（如果是通过 index_params 建表，通常建表时已自动加载，但显式调用保证安全）
+client.load_collection("demo")
+
+# 5. 查询
+query_vector = np.random.random((1, dim)).astype(np.float32)
+res = client.search(
+    collection_name="demo",
+    data=query_vector,
+    limit=5,
+    output_fields=["text"],
+)
+
+for hit in res[0]:
+    print("id:", hit["id"], "score:", hit["distance"], "text:", hit["entity"]["text"])
+
+
+```
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777105447071-703cb869-7130-4a0f-9660-2d5f3cd6e438.png" width="812" title="" crop="0,0,1,1" id="ud62338b4" class="ne-image">
+
+可以看到存入了
+
+###### <font style="color:rgb(0, 0, 0);">Qdrant</font>
+<font style="color:rgb(13, 13, 13);">基于</font>**<font style="color:rgb(0, 0, 0);">Rust</font>**<font style="color:rgb(13, 13, 13);">编写，用Segment段文件管理，单节点性能极高，资源占用极小</font>
+
+<font style="color:rgb(13, 13, 13);">其中</font>**<font style="color:rgb(0, 0, 0);">Segment (段)</font>**
+
++ **<font style="color:rgb(0, 0, 0);">定义</font>**<font style="color:rgb(13, 13, 13);">：向量数据库中数据持久化和索引构建的最小独立单元，类似LSM-Tree中的SSTable。</font>
++ **<font style="color:rgb(0, 0, 0);">类比</font>**<font style="color:rgb(13, 13, 13);">：一本本独立的字典，满了就封存，查询时同时查所有未封存的字典。</font>
++ **<font style="color:rgb(0, 0, 0);">一句话记忆</font>**<font style="color:rgb(13, 13, 13);">：数据落盘与索引的原子单位。</font>
+
+<font style="color:rgb(13, 13, 13);">部署下Qdrant</font>
+
+<font style="color:rgb(13, 13, 13);">docker run -p 6333:6333 qdrant/qdrant:latest</font>
+
++ 实践
+
+```plain
+import numpy as np
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams, PointStruct
+
+# 1. 连接 Qdrant（本地服务器或内存模式）
+# 如果是本地服务器：client = QdrantClient(host="localhost", port=6333)
+# 这里使用内存模式，免安装直接跑：
+client = QdrantClient(":memory:")
+
+# 2. 创建 collection
+client.recreate_collection(
+    collection_name="demo_qdrant",
+    vectors_config=VectorParams(size=128, distance=Distance.COSINE),
+)
+
+# 3. 插入点
+points = [
+    PointStruct(
+        id=i,
+        vector=np.random.rand(128).astype(np.float32).tolist(),
+        payload={"label": i % 10},
+    )
+    for i in range(1000)
+]
+client.upsert(collection_name="demo_qdrant", points=points)
+
+# 4. 搜索 (使用最新的 query_points API)
+query_vector = np.random.rand(128).astype(np.float32).tolist()
+
+search_results = client.query_points(
+    collection_name="demo_qdrant",
+    query=query_vector,        # 注意：旧版是 query_vector=，新版是 query=
+    limit=5,
+)
+
+# 5. 解析并打印结果
+# 注意：query_points 返回的是 QueryResponse 对象，实际数据在 .points 属性中
+for point in search_results.points:
+    print(f"id={point.id}, score={point.score}, payload={point.payload}")
+```
+
+<font style="color:rgb(13, 13, 13);background-color:rgb(248, 248, 248);">输出</font>
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777108474785-2537687d-5ae8-49dc-a518-446131afb459.png" width="527" title="" crop="0,0,1,1" id="u5977d2fb" class="ne-image">
+
+<font style="color:rgb(13, 13, 13);background-color:rgb(248, 248, 248);"></font>
+
+###### <font style="color:rgb(0, 0, 0);">Chroma</font>
+```plain
+import chromadb
+from chromadb.utils.embedding_functions.ollama_embedding_function import OllamaEmbeddingFunction
+
+# ① 连接内存模式的 Chroma 客户端
+client = chromadb.Client()
+
+# ② 创建 Ollama 嵌入函数
+ollama_ef = OllamaEmbeddingFunction(
+    url="http://localhost:11434",     # Ollama 默认地址
+    model_name="bge-m3",   # Ollama 里的嵌入模型，可换别的
+)
+
+# ③ 创建集合，并指定使用 Ollama 嵌入
+collection = client.get_or_create_collection(
+    name="my_collection",
+    embedding_function=ollama_ef,      # 关键：用 Ollama 而不是内置 MiniLM
+)
+
+# ④ 添加文档（现在会用 Ollama 模型来向量化）
+collection.add(
+    documents=["机器学习是人工智能的子集", "今天天气真好适合出门", "深度学习依赖于神经网络"],
+    ids=["doc1", "doc2", "doc3"],
+)
+
+# ⑤ 语义查询（同样会走 Ollama 嵌入）
+results = collection.query(
+    query_texts=["AI 技术"],
+    n_results=2,
+)
+
+print(results["documents"])
+# 预期：最相关的两条中文文档被召回
+```
+
+
+
++ 输出
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777117326389-565e2a99-e528-4664-8e77-0c20321622da.png" width="506" title="" crop="0,0,1,1" id="u04ec8aa2" class="ne-image">
+
+<font style="color:rgb(13, 13, 13);background-color:rgb(248, 248, 248);">向量数据库的基本交互范式是 </font>`**<font style="color:rgb(13, 13, 13);background-color:rgb(236, 236, 236);">Client -> Collection -> Add -> Query</font>**`<font style="color:rgb(13, 13, 13);background-color:rgb(248, 248, 248);">，语义检索能够跨过关键字匹配</font>
+
+
+
+###### <font style="color:rgb(0, 0, 0);">Elasticsearch (ES)</font>
++ <font style="color:rgb(13, 13, 13);">每个 </font>**<font style="color:rgb(0, 0, 0);">Elasticsearch 索引</font>**<font style="color:rgb(13, 13, 13);"> 由多个 </font>**<font style="color:rgb(0, 0, 0);">分片（shard）</font>**<font style="color:rgb(13, 13, 13);"> 组成，每个分片本身就是一个 Lucene 索引。</font>
++ <font style="color:rgb(13, 13, 13);">Lucene 索引的核心是 </font>**<font style="color:rgb(0, 0, 0);">倒排索引</font>**<font style="color:rgb(13, 13, 13);">：从词项（term）映射到包含它的文档列表。</font>
++ <font style="color:rgb(13, 13, 13);">文本搜索流程：分词 → 倒排索引查找 → BM25 打分 → 排序返回。</font>
++ <font style="color:rgb(13, 13, 13);">向量搜索：通过 kNN 查询（如 </font>`**<font style="color:rgb(13, 13, 13);">knn_search</font>**`<font style="color:rgb(13, 13, 13);"> API）在 HNSW 等图结构上做 ANN 检索</font>
+
+<font style="color:rgb(13, 13, 13);">docker部署es：docker run -d --name es01 -p 9200:9200 -e "discovery.type=single-node" -e "xpack.security.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:8.12.0</font>
+
++ <font style="color:rgb(13, 13, 13);">实践</font>
+
+```plain
+from elasticsearch import Elasticsearch
+import numpy as np
+
+# ------------------- ① 连接 ES 并创建索引 -------------------
+es = Elasticsearch("http://localhost:9200") # 连接本地 ES
+# 做什么：实例化 ES 客户端
+# 为什么：通过 REST API 与 ES 交互
+# 改变：如果开启了安全认证，这里需配置 http_auth 或 api_key
+
+index_name = "rag_hybrid_index"
+if es.indices.exists(index=index_name):
+    es.indices.delete(index=index_name) # 清理旧索引
+
+mapping = {
+    "mappings": {
+        "properties": {
+            "text_content": {             # 文本字段
+                "type": "text",           # 做什么：定义为全文检索类型
+                "analyzer": "standard"    # 为什么：使用标准分词器（IK 需要额外安装）
+            },
+            "embedding": {                # 向量字段
+                "type": "dense_vector",   # 做什么：ES 8.x 使用 dense_vector 类型
+                "dims": 4,                # 为什么：必须与后续灌入的向量维度严格一致
+                "index": True,            # 做什么：启用向量索引（默认使用 HNSW）
+                "similarity": "l2_norm",  # 为什么：使用 L2 距离计算相似度
+                "index_options": {        # ✅ 显式配置 HNSW 参数
+                    "type": "hnsw",       # 索引类型：HNSW
+                    "m": 16,              # 每层最大连接数（默认16，越大越准越慢）
+                    "ef_construction": 100 # 构建时搜索宽度（默认100）
+                }
+            }
+        }
+    }
+    # 注意：ES 8.12 不需要 index.knn 设置，KNN 功能默认内置
+}
+es.indices.create(index=index_name, body=mapping)
+
+# ------------------- ② 灌入模拟文档 -------------------
+docs = [
+    {"text_content": "FAISS 是一个向量检索库", "embedding": [1.0, 1.0, 1.0, 1.0]},
+    {"text_content": "Elasticsearch 支持全文搜索", "embedding": [2.0, 2.0, 2.0, 2.0]},
+    {"text_content": "大模型经常会发生幻觉", "embedding": [3.0, 3.0, 3.0, 3.0]}
+]
+
+for i, doc in enumerate(docs):
+    es.index(index=index_name, id=i, document=doc)
+    # 做什么：将文档以指定 ID 写入 ES
+    # 为什么：固定 ID 便于测试，否则 ES 自动生成随机 ID
+    # 改变：如果不指定 ID，相同文档重复 index 会生成多个副本
+
+es.indices.refresh(index=index_name) # 强制刷新，确保数据可被立刻搜索
+# 做什么：让刚写入的数据从内存 Buffer 刷入 Segment 变为可搜索状态
+# 为什么：ES 默认 1 秒刷新一次，测试时需立刻可见
+# 改变：生产环境中频繁 refresh 会严重影响写入性能
+
+# ------------------- ③ 执行混合检索 -------------------
+query_embedding = [1.1, 1.1, 1.1, 1.1]
+query_text = "向量"
+
+# ES 8.12 KNN 查询语法：使用顶层 knn 参数，不是 bool.should
+# 参考：https://www.elastic.co/guide/en/elasticsearch/reference/current/knn-search.html
+
+# 方式1：纯 KNN 搜索（使用 knn 顶层参数）
+try:
+    response = es.search(
+        index=index_name,
+        knn={
+            "field": "embedding",
+            "query_vector": query_embedding,
+            "k": 2,
+            "num_candidates": 10
+        },
+        size=2
+    )
+    print("✅ KNN 检索结果:")
+    for hit in response['hits']['hits']:
+        print(f"  ID: {hit['_id']}, Score: {hit['_score']}, Text: {hit['_source']['text_content']}")
+except Exception as e:
+    print(f"❌ KNN 查询失败: {e}")
+
+# 方式2：混合搜索（KNN + 文本过滤）
+print("\n" + "="*50)
+print("尝试混合搜索（KNN + 文本过滤）...")
+try:
+    # ES 8.12 支持在 knn 查询中添加 filter
+    response = es.search(
+        index=index_name,
+        knn={
+            "field": "embedding",
+            "query_vector": query_embedding,
+            "k": 2,
+            "num_candidates": 10,
+            "filter": {
+                "match": {"text_content": query_text}
+            }
+        },
+        size=2
+    )
+    print("✅ 混合检索结果:")
+    for hit in response['hits']['hits']:
+        print(f"  ID: {hit['_id']}, Score: {hit['_score']}, Text: {hit['_source']['text_content']}")
+except Exception as e:
+    print(f"❌ KNN+Filter 查询失败: {e}")
+
+
+# 方式3：手动实现混合搜索（免费版可用）
+print("\n" + "="*50)
+print("方式3：手动实现混合搜索（加权合并得分）...")
+try:
+    # 分别获取向量搜索结果和文本搜索结果
+    knn_response = es.search(
+        index=index_name,
+        knn={
+            "field": "embedding",
+            "query_vector": query_embedding,
+            "k": 5,
+            "num_candidates": 10
+        },
+        size=5
+    )
+    
+    text_response = es.search(
+        index=index_name,
+        query={"match": {"text_content": query_text}},
+        size=5
+    )
+    
+    # 手动合并得分（加权平均）
+    from collections import defaultdict
+    
+    scores = defaultdict(lambda: {"knn": 0, "text": 0, "doc": None})
+    
+    # 归一化 KNN 得分（转为 0-1 范围）
+    knn_hits = knn_response['hits']['hits']
+    if knn_hits:
+        max_knn = max(hit['_score'] for hit in knn_hits)
+        min_knn = min(hit['_score'] for hit in knn_hits)
+        knn_range = max_knn - min_knn if max_knn != min_knn else 1
+        
+        for hit in knn_hits:
+            doc_id = hit['_id']
+            normalized_score = (hit['_score'] - min_knn) / knn_range
+            scores[doc_id]["knn"] = normalized_score
+            scores[doc_id]["doc"] = hit['_source']
+    
+    # 归一化文本得分
+    text_hits = text_response['hits']['hits']
+    if text_hits:
+        max_text = max(hit['_score'] for hit in text_hits)
+        min_text = min(hit['_score'] for hit in text_hits)
+        text_range = max_text - min_text if max_text != min_text else 1
+        
+        for hit in text_hits:
+            doc_id = hit['_id']
+            normalized_score = (hit['_score'] - min_text) / text_range
+            scores[doc_id]["text"] = normalized_score
+            if scores[doc_id]["doc"] is None:
+                scores[doc_id]["doc"] = hit['_source']
+    
+    # 加权合并 (alpha 控制权重: 0=纯文本, 1=纯向量)
+    alpha = 0.5  # 向量权重
+    beta = 0.5   # 文本权重
+    
+    final_scores = []
+    for doc_id, data in scores.items():
+        combined_score = alpha * data["knn"] + beta * data["text"]
+        final_scores.append((doc_id, combined_score, data["doc"]))
+    
+    # 排序取 Top-2
+    final_scores.sort(key=lambda x: x[1], reverse=True)
+    
+    print(f"✅ 手动混合检索结果 (向量权重={alpha}, 文本权重={beta}):")
+    for doc_id, score, doc in final_scores[:2]:
+        print(f"  ID: {doc_id}, 合并得分: {score:.4f}, Text: {doc['text_content']}")
+        print(f"      (向量得分: {scores[doc_id]['knn']:.4f}, 文本得分: {scores[doc_id]['text']:.4f})")
+        
+except Exception as e:
+    print(f"❌ 手动混合查询失败: {e}")
+    print("\n尝试仅文本搜索...")
+    # 降级为纯文本搜索
+    text_query = {"match": {"text_content": query_text}}
+    response = es.search(index=index_name, query=text_query, size=2)
+    print("✅ 文本检索结果:")
+    for hit in response['hits']['hits']:
+        print(f"  ID: {hit['_id']}, Score: {hit['_score']}, Text: {hit['_source']['text_content']}")
+
+# 查看索引配置
+print("\n" + "="*50)
+print("【索引配置详情】")
+
+# 查看 settings 中的索引参数
+settings = es.indices.get_settings(index=index_name)
+print("\n索引设置 (Settings):")
+print(f"  分片数: {settings[index_name]['settings']['index']['number_of_shards']}")
+print(f"  副本数: {settings[index_name]['settings']['index']['number_of_replicas']}")
+
+# 查看 mapping 详情
+mapping = es.indices.get_mapping(index=index_name)
+embedding_config = mapping[index_name]['mappings']['properties']['embedding']
+print("\n向量字段配置 (Mapping):")
+print(f"  类型: {embedding_config['type']}")
+print(f"  维度: {embedding_config['dims']}")
+print(f"  索引: {embedding_config['index']}")
+print(f"  相似度: {embedding_config['similarity']}")
+
+# 检查是否有 index_options（自定义 HNSW 参数）
+if 'index_options' in embedding_config:
+    print(f"  索引选项: {embedding_config['index_options']}")
+else:
+    print("  索引选项: 使用默认值 (HNSW, m=16, ef_construction=100)")
+
+# 验证 HNSW 是否生效 - 查看段信息
+print("\n" + "="*50)
+print("【验证 HNSW 索引】")
+segments = es.indices.segments(index=index_name)
+      
+```
+
++ <font style="color:rgb(13, 13, 13);">输出</font>
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777173437215-fa5eabd9-f480-46df-b849-813030dab427.png" width="652" title="" crop="0,0,1,1" id="uac1782c8" class="ne-image">
+
+
+
+###### <font style="color:rgb(0, 0, 0);">OpenSearch</font>
+<font style="color:rgb(13, 13, 13);">OpenSearch 源自 Elasticsearch 7.10 开源分支，架构（分片、副本、倒排索引）与 ES 高度相似</font>
+
+<font style="color:rgb(13, 13, 13);">向量搜索：通过 k-NN 插件支持，底层可选用 </font>**<font style="color:rgb(0, 0, 0);">Faiss / Lucene / nmslib</font>**<font style="color:rgb(13, 13, 13);"> 引擎</font>
+
++ 实践
+  - docker 启动 docker run -d --name opensearch-node -p 9200:9200 -p 9600:9600 -e 'discovery.type=single-node' -e 'plugins.security.disabled=true' -e 'OPENSEARCH_INITIAL_ADMIN_PASSWORD=MyStrongPass123!' opensearchproject/opensearch:2.11.0
+
+
+
+```plain
+from opensearchpy import OpenSearch
+from opensearchpy.helpers import bulk
+import numpy as np
+
+# ------------------- ① 连接 OpenSearch -------------------
+host = 'localhost'
+port = 9200
+auth = ('admin', 'MyStrongPass123!') # OpenSearch 默认强制开启安全认证
+
+# 注意：如果 OpenSearch 没有启用 HTTPS，需要将 use_ssl 设为 False
+# 检查方式：curl http://localhost:9200 或 curl https://localhost:9200 -k
+client = OpenSearch(
+    hosts = [{'host': host, 'port': port}],
+    http_auth = auth,
+    use_ssl = False,  # ✅ 改为 False，你的 OS 容器未启用 HTTPS
+    verify_certs = False,
+    ssl_assert_hostname = False,
+    ssl_show_warn = False,
+    scheme = 'http'   # 显式指定 http 协议
+)
+# 做什么：实例化 OpenSearch 客户端
+# 为什么：OpenSearch 默认启用 HTTPS 和安全认证，必须配置 auth 和 SSL 参数
+# 改变：如果像 ES 那样关闭安全认证，这里可简化，但生产环境强烈不建议
+
+print("OpenSearch 信息:", client.info())
+
+# ------------------- ② 创建 k-NN 索引 -------------------
+index_name = "opensearch_rag_index"
+if client.indices.exists(index=index_name):
+    client.indices.delete(index=index_name)
+
+# OpenSearch 独有的 k-NN 索引配置
+index_body = {
+    "settings": {
+        "index.knn": True  # 做什么：显式开启 k-NN 插件功能
+        # 为什么：这是 OpenSearch 向量检索的总开关，不开启后续向量查询无效
+        # 注意：index.knn.algo_param.ef_search 在 OpenSearch 2.4+ 已移除
+        # ef_search 现在作为查询参数传入，不在索引设置中配置
+    },
+    "mappings": {
+        "properties": {
+            "text_content": {"type": "text"},
+            "embedding": {
+                "type": "knn_vector", # 做什么：使用 OpenSearch 专属的 knn_vector 类型
+                # 为什么：与 ES 8.x 的 dense_vector 不同，它直接绑定 k-NN 插件的底层算法
+                "dimension": 4,
+                "method": {
+                    "name": "hnsw",       # 算法名称
+                    "space_type": "l2",   # 距离度量
+                    "engine": "faiss",    # 做什么：指定底层计算引擎为 Faiss
+                    # 为什么：OpenSearch 支持nmslib/faiss/lucene，Faiss 引擎在大规模和高维场景性能更优，且支持 IVF/PQ 等高级压缩
+                    # 改变：如果用 nmslib，则不支持磁盘向量；如果用 lucene，则遵循 ES 8.x 的一些特性
+                    "parameters": {
+                        "m": 16,          # HNSW 图的节点连接数
+                        "ef_construction": 256 # 做什么：构建索引时的候选集大小
+                        # 为什么：构建时的参数，越大图质量越高，构建越慢
+                    }
+                }
+            },
+            "category": {"type": "keyword"} # 用于后续测试过滤
+        }
+    }
+}
+
+client.indices.create(index=index_name, body=index_body)
+
+# ------------------- ③ 批量灌入模拟数据 -------------------
+docs = [
+    {"text_content": "FAISS 是 Meta 开源的向量库", "embedding": [1.0, 1.0, 1.0, 1.0], "category": "vector_db"},
+    {"text_content": "OpenSearch 源自 Elasticsearch 7.10", "embedding": [2.0, 2.0, 2.0, 2.0], "category": "search_engine"},
+    {"text_content": "大模型 RAG 架构缓解幻觉", "embedding": [3.0, 3.0, 3.0, 3.0], "category": "llm"},
+    {"text_content": "Faiss 支持 IVF 索引加速", "embedding": [1.1, 1.1, 1.1, 1.1], "category": "vector_db"},
+]
+
+# 使用 bulk API 批量写入
+actions = [
+    {"_index": index_name, "_id": i, "_source": doc}
+    for i, doc in enumerate(docs)
+]
+bulk(client, actions)
+# 做什么：高效批量写入文档
+# 为什么：比循环调用 index 快得多，是生产环境标配
+
+client.indices.refresh(index=index_name)
+
+# ------------------- ④ 执行检索 -------------------
+query_embedding = [1.05, 1.05, 1.05, 1.05]
+
+# 方式 1：纯 k-NN 搜索 (使用 OpenSearch 专属的 knn 查询子句)
+knn_query = {
+    "size": 2,
+    "query": {
+        "knn": {
+            "embedding": {
+                "vector": query_embedding,
+                "k": 2
+            }
+        }
+    }
+}
+
+response = client.search(body=knn_query, index=index_name)
+print("\n✅ OpenSearch 纯 KNN 结果:")
+for hit in response['hits']['hits']:
+    print(f"  ID: {hit['_id']}, Score: {hit['_score']:.4f}, Text: {hit['_source']['text_content']}")
+
+# 方式 2：高效过滤搜索 (Efficient Filtering)
+# 业务需求：找向量相似的，但只要 category = "vector_db" 的文档
+filter_query = {
+    "size": 2,
+    "query": {
+        "bool": {
+            "filter": [ # 做什么：在此处放置过滤条件
+                {"term": {"category": "vector_db"}}
+            ],
+            "must": [ # 做什么：在此处放置 k-NN 查询
+                {
+                    "knn": {
+                        "embedding": {
+                            "vector": query_embedding,
+                            "k": 2
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}
+# 为什么：OpenSearch 的 k-NN 插件会智能识别 bool.filter，在 HNSW 图遍历时直接跳过不满足条件的节点
+# 改变：如果把 knn 放 filter 里，文本放 must 里，逻辑不变，但 must 会参与算分
+
+response = client.search(body=filter_query, index=index_name)
+print("\n✅ OpenSearch 高效过滤 KNN 结果:")
+for hit in response['hits']['hits']:
+    print(f"  ID: {hit['_id']}, Score: {hit['_score']:.4f}, Text: {hit['_source']['text_content']}, Category: {hit['_source']['category']}")
+```
+
+注意这里的Docker 容器可能启动时禁用了安全认证（ DISABLE_SECURITY_PLUGIN=true ），所以用 HTTP就行了
+
++ 输出
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777175474044-b9367530-5166-4ffd-a868-5996f2a88918.png" width="502" title="" crop="0,0,1,1" id="u51652e71" class="ne-image">
+
+
+
+###### <font style="color:rgb(0, 0, 0);">Neo4j</font>
++ <font style="color:rgb(13, 13, 13);">Neo4j 使用 </font>**<font style="color:rgb(0, 0, 0);">属性图模型</font>**<font style="color:rgb(13, 13, 13);">：节点、关系、属性，原生图存储，无索引邻接（index-free adjacency）。</font>
++ <font style="color:rgb(13, 13, 13);">查询语言 Cypher：声明式图模式匹配，如 </font>`**<font style="color:rgb(13, 13, 13);">(a:Person)-[:KNOWS]->(b:Person)</font>**`<font style="color:rgb(13, 13, 13);">。</font>
++ <font style="color:rgb(13, 13, 13);">适合多跳遍历、路径查询、图算法（PageRank、社区发现等）</font><font style="color:rgb(13, 13, 13);background-color:rgb(248, 248, 248);">。</font>
+
+
+
++ 实践
+
+docker 启动 docker run -d --name neo4j -p 7474:7474 -p 7687:7687 -e NEO4J_AUTH=neo4j/password neo4j:latest
+
+```plain
+from neo4j import GraphDatabase
+import numpy as np
+
+# ------------------- ① 连接 Neo4j 并创建节点 -------------------
+driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "password"))
+# 做什么：通过 Bolt 协议连接图数据库
+# 为什么：Bolt 是专用的二进制协议，比 HTTP 性能更好
+
+def create_graph(tx):
+    # 清理旧数据
+    tx.run("MATCH (n) DETACH DELETE n")
+    
+    # 创建带有 embedding 的实体节点
+    tx.run("""
+    CREATE (a:Entity {name: 'FAISS', embedding: [1.0,1.0,1.0,1.0]})
+    CREATE (b:Entity {name: 'HNSW', embedding: [1.1,1.1,1.1,1.1]})
+    CREATE (c:Entity {name: 'Elasticsearch', embedding: [5.0,5.0,5.0,5.0]})
+    CREATE (a)-[:DEPENDS_ON]->(b)  // FAISS 依赖 HNSW 算法
+    CREATE (c)-[:INTEGRATES]->(b)  // ES 集成了 HNSW 算法
+    """)
+    # 做什么：创建节点并建立 DEPENDS_ON 和 INTEGRATES 关系
+    # 为什么：这是 GraphRAG 的核心优势，关系蕴含了逻辑推理路径
+    # 改变：如果不加关系，退化为纯向量检索，丧失多跳能力
+
+with driver.session() as session:
+    session.execute_write(create_graph)
+
+# ------------------- ② 创建向量索引 -------------------
+def create_vector_index(tx):
+    tx.run("""
+    CREATE VECTOR INDEX entity_embedding_index FOR (n:Entity) ON (n.embedding)
+    OPTIONS {indexConfig: {
+        `vector.dimensions`: 4,
+        `vector.similarity_function`: 'cosine'
+    }}
+    """)
+    # 做什么：为 Entity 节点的 embedding 属性创建向量索引
+    # 为什么：必须创建索引，后续的向量相似度查询才能走索引加速
+    # 改变：如果 dimensions 填错，创建会失败；如果不建索引，只能全库扫描计算
+
+with driver.session() as session:
+    session.execute_write(create_vector_index)
+
+# ------------------- ③ 执行 Cypher 组合查询 -------------------
+query_embedding = [1.05, 1.05, 1.05, 1.05] # 模拟 FAISS 的查询向量
+
+def graph_rag_query(tx, query_vec):
+    result = tx.run("""
+    // 第一步：通过向量索引找到最相似的起始节点
+    CALL db.index.vector.queryNodes('entity_embedding_index', 1, $queryVec)
+    YIELD node AS start_node, score
+    
+    // 第二步：基于起始节点进行图遍历，获取关联上下文
+    MATCH path = (start_node)-[r*1..2]-(connected_node)
+    RETURN start_node.name AS core_entity, 
+           score AS similarity,
+           connected_node.name AS context_entity,
+           [rel in relationships(path) | type(rel)] AS relations
+    """, queryVec=query_vec)
+    # 做什么：先执行向量检索拿到 start_node，再执行图 MATCH 拿到多跳关系
+    # 为什么：单靠向量找不到“ES 和 FAISS 都依赖 HNSW”这种关联逻辑
+    # 改变：如果去掉 CALL 部分，只能做全局图遍历，失去语义聚焦能力
+    
+    for record in result:
+        print(f"核心实体: {record['core_entity']} (相似度: {record['similarity']:.2f})")
+        print(f"关联上下文: {record['context_entity']}, 关系路径: {record['relations']}")
+
+with driver.session() as session:
+    session.execute_read(graph_rag_query, query_embedding)
+
+driver.close()
+```
+
+输出
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777174850023-c751ed62-c37d-4334-88fb-a948dabdd05c.png" width="508" title="" crop="0,0,1,1" id="u7c643b6b" class="ne-image">
+
+原因：查询向量 [1.05, 1.05, 1.05, 1.05] 与 FAISS 的 embedding [1.0,1.0,1.0,1.0] 最相似（余弦相似度 1.00），所以核心实体是 FAISS。
+
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1777175053017-aff46183-2e33-45f3-bf32-8407ba54ff29.png" width="483" title="" crop="0,0,1,1" id="ud30a3e29" class="ne-image">
+
+输出展示了 "FAISS 和 Elasticsearch 都依赖 HNSW" 这一关联逻辑，这正是纯向量检索无法发现的语义关系
 
 <font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);"></font>
 
 ### **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">查询向量化</font>**
+这个步骤和离线阶段的数据embedding向量化相呼应
 
+**<font style="color:rgb(0, 0, 0);">概念</font>**<font style="color:rgb(13, 13, 13);">： 现实世界的是文本（“苹果公司发布新手机”）、图片、音频，计算机只认数字。向量化就是用深度学习模型（Embedding 模型），把任何一段文本压缩成一个</font>**<font style="color:rgb(0, 0, 0);">高维浮点数数组</font>**<font style="color:rgb(13, 13, 13);">（比如 1024 维的向量）。</font>
+
+**<font style="color:rgb(0, 0, 0);">人海比喻</font>**<font style="color:rgb(13, 13, 13);">： 把一个人所有的特征（身高、性格、收入、爱好）提取出来，写进一张</font>**<font style="color:rgb(0, 0, 0);">标准化的简历</font>**<font style="color:rgb(13, 13, 13);">。</font>
+
+**<font style="color:rgb(0, 0, 0);">核心特点</font>**<font style="color:rgb(13, 13, 13);">：</font>
+
++ **<font style="color:rgb(0, 0, 0);">语义捕获</font>**<font style="color:rgb(13, 13, 13);">：好的模型能让意思相近的文本，变成距离相近的向量。“汽车”和“轿车”的向量很近，“汽车”和“苹果”的向量很远。</font>
++ **<font style="color:rgb(0, 0, 0);">只管质，不管速</font>**<font style="color:rgb(13, 13, 13);">：它只负责把简历写好写准，不管你后面怎么搜。</font>
++ **<font style="color:rgb(0, 0, 0);">RAG中的常见坑</font>**<font style="color:rgb(13, 13, 13);">：如果模型拉胯（比如用了个很老的 Word2Vec），简历写错了，后面再怎么精准搜索也白搭。</font>
+
+<font style="color:rgb(13, 13, 13);">在RAG（检索增强生成）系统中，在线查询阶段是整个系统的"入口"。当用户输入一段自然语言查询时，系统必须将其转化为机器可以计算的形式，这就是</font>**<font style="color:rgb(0, 0, 0);">查询向量化</font>**<font style="color:rgb(13, 13, 13);">的核心使命。</font>
+
+<font style="color:rgb(13, 13, 13);"></font>
 
 ### **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">相似度搜索</font>**
 
