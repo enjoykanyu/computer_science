@@ -91,3 +91,9 @@ export function ensureOpenClawCliOnPath(opts: EnsureOpenClawPathOpts = {}) {
 
 
 4.1，注册gateway节点
+
+
+# gateway网关层级框架
+
+作用：作为门卫校验权限，进行功能转发，再回传结论
+
