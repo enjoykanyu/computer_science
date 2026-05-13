@@ -97,3 +97,13 @@ export function ensureOpenClawCliOnPath(opts: EnsureOpenClawPathOpts = {}) {
 
 作用：作为门卫校验权限，进行功能转发，再回传结论
 
+### 认证与授权
+
+
+### 会话与状态管理
+
+### 多agent路由
+
+# agent与工具
+
+# 沙箱安全
