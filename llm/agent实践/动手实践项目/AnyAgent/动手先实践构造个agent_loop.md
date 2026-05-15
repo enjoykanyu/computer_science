@@ -2906,9 +2906,14 @@ demo_comparison("苹果手机截屏方法有哪些")
 
 ### **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">结果后处理</font>**
 
+# 记忆
+
+# mcp tool
 
 
 
+
+# skill
 
 
 
