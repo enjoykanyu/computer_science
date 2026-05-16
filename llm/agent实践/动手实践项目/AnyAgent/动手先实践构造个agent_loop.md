@@ -2906,6 +2906,97 @@ demo_comparison("苹果手机截屏方法有哪些")
 
 ### **<font style="color:rgb(51, 51, 51);background-color:rgb(248, 248, 248);">结果后处理</font>**
 
+# 上下文工程
+## 背景
+问题背景
+在 LangGraph 出现之前，构建 AI Agent 面临以下核心痛点：
+
+- 痛点一：状态丢失
+
+传统 LLM 调用是无状态的，每次调用都是"失忆"的
+多轮对话需要手动传递历史消息
+Agent 执行中断后无法恢复
+
+- 痛点二：流程控制混乱
+
+用 if-else 硬编码分支逻辑，代码难以维护
+循环、条件跳转缺乏统一抽象
+调试困难，不知道 Agent "走到哪一步了"
+
+- 痛点三：缺乏持久化
+
+长时间运行的任务无法保存进度
+系统崩溃后一切重来
+无法实现"时间旅行"调试
+
+- 上下文管理演进
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1778933817205-51ade9e4-0aa9-4344-9310-65bca399850a.png" width="1032" title="" crop="0,0,1,1" id="ud8fef46d" class="ne-image">
+
+- 用户层：开发者通过 API 或可视化 Studio 与系统交互
+- 编排层：StateGraph 是核心，由 Node（处理逻辑）和 Edge（流程控制）组成
+- 状态管理层：State 是共享数据，Checkpoint 实现快照，Memory 提供记忆能力
+- 持久化层：多种存储后端可选，从开发到生产无缝切换
+- 执行引擎：Pregel 运行时负责图的执行、流式输出和中断处理
+
+## 核心概念理解
+
+### State（状态）
+State 是 LangGraph 中所有节点共享的、可变的数据结构，是 Agent 的"工作记忆"。
+
+类比：State 就像一块共享白板——每个节点（人）走过来，在白板上读取信息、写下新内容，下一个人看到的始终是最新版本。
+
+### StateGraph（状态图）
+定义：StateGraph 是 LangGraph 的核心构建器，用于定义节点、边和状态 Schema 的有向图结构。
+
+类比：StateGraph 就像一张地铁线路图——站点是 Node，轨道是 Edge，乘客是 State，每到一个站乘客状态都会改变。
+
+### Node（节点）
+定义：Node 是图中的处理单元，接收当前 State，执行逻辑后返回状态更新。
+
+类比：Node 就像流水线上的一个工位——工人拿到半成品（当前 State），加工后放回流水线。
+
+### Edge（边）
+定义：Edge 定义节点之间的流转规则，分为普通边和条件边两种。
+
+类比：Edge 就像路口的指示牌——普通边写死方向（"往前走"），条件边根据情况指路（"如果下雨走左边，否则走右边"）。
+
+### Checkpointer（检查点器）
+定义：Checkpointer 在每个节点执行后自动保存 State 的快照，实现持久化和故障恢复。
+
+类比：Checkpointer 就像游戏里的自动存档——每过一关自动保存，死了可以从上一关重来。
+
+### thread_id（线程 ID）
+定义：thread_id 是会话的唯一标识符，用于隔离不同用户/对话的状态。
+
+类比：thread_id 就像餐厅的桌号——每桌客人有自己的订单（State），互不干扰。
+
+### Memory Store（记忆存储）
+定义：Memory Store 是 LangGraph 提供的跨线程共享存储，用于长期记忆。
+
+类比：如果 Checkpointer 是短期记忆（当前对话），Memory Store 就是笔记本（跨对话持久保存）。
+
+### Subgraph（子图）
+定义：Subgraph 是嵌套在父图中的独立状态图，拥有自己的 State 和 Checkpointer。
+
+类比：Subgraph 就像公司里的独立部门——有自己的工作流程，但最终汇报给总公司。
+
+### Interrupt（中断）
+定义：Interrupt 机制允许图在任意节点暂停执行，等待外部输入（如人工审批）后恢复。
+
+类比：Interrupt 就像快递的**"需本人签收"**——快递员到了，但必须等你签字才能继续。
+
+### Time Travel（时间旅行）
+定义：Time Travel 允许开发者回溯到任意历史检查点，查看或从该点恢复执行。
+
+类比：Time Travel 就像Git 的版本回退——你可以 checkout 到任意 commit，查看当时的状态。
+
+- 构建层：开发者用 StateGraph 定义图结构，编译后生成可执行图
+- 执行层：编译图通过 Checkpointer 实现持久化，thread_id 隔离会话
+- 持久化层：Checkpointer 对接多种存储后端
+- 记忆层：State 是短期记忆，Memory Store 是长期记忆
+- 高级特性：Subgraph 支持嵌套，Interrupt 支持人工介入
+
+
 # 记忆
 
 # mcp tool
