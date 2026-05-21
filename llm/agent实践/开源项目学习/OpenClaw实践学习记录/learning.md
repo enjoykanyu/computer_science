@@ -104,6 +104,13 @@ export function ensureOpenClawCliOnPath(opts: EnsureOpenClawPathOpts = {}) {
 
 ### 多agent路由
 
-# agent与工具
+# Session 模型
 
-# 沙箱安全
+# 上下文引擎
+# 通道绑定
+# 多 Agent 路由 agent与工具
+# 安全与沙箱
+# 记忆插件槽
+
+
+# 插件SDK+MCP
