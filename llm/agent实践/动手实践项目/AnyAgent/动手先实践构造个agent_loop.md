@@ -3133,6 +3133,51 @@ if __name__ =="__main__":
 Google在2025年4月推出了A2A协议,其核心设计动机正是解决上述三大痛点:互操作性(任何Agent都能和任何其他Agent通信)、可发现性(AAgent能自动发现对方的能力)、异步协作(支持长时间运行的任务和流式交互)。
 A2A不不是一个框架,而是一个开放协议--它定义了Agent之间"说什么"和"怎么说"的标冫佳,但不限制Agent内部如何实现。
 
+
+##### Agent Card
+定义:Agent Card是一个JSON文档,描述了Agent的身份信息、能力列表(Skills)和通
+信端点,是A2A协议中Agent发现的基础。
+
+类比:Agent Card就像一张"名片"--上面写着"我是谁"、"我能做什么"、"怎么联系我"。
+拿到名片的人不需要了解你的内部构造,只需要看名片就知道能否合作、如何合作。
+
+##### Skill
+定义:Skill是Agent Card中描述的一个具体能力,包括名称、描述、输入输出模式等,是
+Client判断"这个Agent能不能做这件事"的依据。
+
+类比:Skill就像餐厅菜单上的一道菜--菜名和描述让你知道这道菜是什么、大概什么口
+味,但你不需要知道后厨怎么做。
+
+注意这里是Agent定义给A2A协议的Skill，不是Agent内部的Skill
+
+##### Task
+定义:Task是A2A中工作调度的核心单元,代表一次完整的Agernt交互过程,拥有完整的
+生命周期(submitted - working - completed/failed/canceled)。
+
+类比:Task就像工单系统里的一张工单--创建后有人认领(working),可能需要补充信
+息(input-required),最终要么完成(completed),要么失败(failed)或取消
+(canceled)。
+
+##### Message
+定义:Message是Task中的通信单元,包含角色标识(user/ager/agerht)和一个或多个Part,
+用于在Client和RemoteAgent之间传递信息。
+
+类比:Message就像微信里的一条消息--有发送者(角色),有内容(Part),属于某个对话(Task)。
+
+##### Part
+定义:Part是Message中的内容单元,支持三种类型:TextPart(文本)、FilePart(文件,支持base64或URL引用)、DataPart(结构化JSON数据号)。
+
+类比:Part就像一封邮件里的不同附件--正文是TextPart,附件是FilePart,表格数据是
+DataPart。
+
+##### Artifact
+定义:Artifact是Task的最终产出物,由RemoteAgent生成,可以包含与Part相同类型的多种内容单元。
+
+类比:Artifact就像工厂出库的产品--它是整个生产过程(Task)的最终成果,而不是中间的沟通记录(Message)。
+
+##### 核心概念的关系图
+<img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1779455259153-9a2de8d3-8276-4995-9f61-0c745ceab5ba.png" width="1047" title="" crop="0,0,1,1" id="u090f4cfa" class="ne-image">
+
 ### 架构
 <img src="https://cdn.nlark.com/yuque/0/2026/png/21570810/1779453377705-068423ef-09e2-472f-8c9b-571df67d0493.png" width="558" title="" crop="0,0,1,1" id="u3f471cfd" class="ne-image">
 
