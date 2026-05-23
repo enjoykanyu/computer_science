@@ -116,7 +116,8 @@ Channel Extension，不需要改动 Gateway 或 Agent Runner 的任何代码。
 # gateway网关层级框架
 
 作用：作为门卫校验权限，进行功能转发，再回传结论
-
+网关层架构
+![img.png](resource/网关.png)
 ### 认证与授权
 
 
