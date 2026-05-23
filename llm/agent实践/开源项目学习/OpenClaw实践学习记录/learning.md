@@ -93,6 +93,26 @@ export function ensureOpenClawCliOnPath(opts: EnsureOpenClawPathOpts = {}) {
 4.1，注册gateway节点
 
 
+# openclaw 整体框架介绍
+大致的过程：CLI 发命令，Gateway 启动和编排，Channel 收发消息，Routing 选 Agent/Session
+，Auto-Reply 调模型生成回复，Outbound 发回通道，Config/Session/Media 持久化状态。
+### 整体的源码目录结构
+![img.png](resource/目录.png)
+##### src目录结构内容
+![img.png](resource/src.png)
+
+##### 架构思想
+从上到下分别是：消息通道层（Channels）、Gateway 控制平面（Gateway）、嵌入式 Agent Runner（Agent 执行核心）、LLM 提供商层（
+Providers）。这四个层次各司其职、松耦合协作，形成了一个"上层决定什么时候做，中间层决
+定怎么做（队列、通道、会话），底层负责执行"的多层编排体系。
+
+消息通道层负责与外部聊天平台的对接，将不同平台的消息格式统一为内部格式；
+- Gateway 作为中央控制平面，管理会话、路由、插件生命周期、定时任务等；
+- Agent Runner 是整个系统的"大脑"，负责系统提示词构建、上下文管理、模型选择、流式传输、工具执行等LLM 交互的全流程；
+- LLM 提供商层则是与各家大模型 API 的通信层，支持 OpenAI Chat Completions、OpenAI Responses API、Anthropic Messages API 等主流格式。 
+这种分层设计的核心好处是：任何一层的变化都不会扩散到其他层。例如，新增一个聊天通道只需要写一个
+Channel Extension，不需要改动 Gateway 或 Agent Runner 的任何代码。
+
 # gateway网关层级框架
 
 作用：作为门卫校验权限，进行功能转发，再回传结论
