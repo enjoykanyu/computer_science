@@ -253,49 +253,80 @@ child.once("error", (error) => {
 
 ```typescript
 export async function runCli(argv = process.argv) {
-  // ① 解析容器参数和 profile
-  const parsedContainer = parseCliContainerArgs(argv);
-  const parsedProfile = parseCliProfileArgs(parsedContainer.argv);
+  const originalArgv = normalizeWindowsArgv(argv);
+  const startupTrace = createGatewayCliMainStartupTrace(originalArgv);
 
-  // ② 加载 .env（如果存在）
+  // ═══════════════════════════════════════════
+  // 第一部分：参数预处理（container + profile）
+  // ═══════════════════════════════════════════
+  const parsedContainer = parseCliContainerArgs(originalArgv);
+  const parsedProfile = parseCliProfileArgs(parsedContainer.argv);
+  if (parsedProfile.profile) {
+    applyCliProfileEnv({ profile: parsedProfile.profile });
+  }
+  // --container 和 --profile 不能同时使用
+  const containerTarget = maybeRunCliInContainer(originalArgv);
+  if (containerTarget.handled) return;
+
+  let normalizedArgv = parsedProfile.argv;
+
+  // ═══════════════════════════════════════════
+  // 第二部分：运行前准备
+  // ═══════════════════════════════════════════
+
+  // ① 加载 .env（如果当前目录或状态目录存在 .env 文件）
   if (shouldLoadCliDotEnv()) {
     const { loadCliDotEnv } = await import("./dotenv.js");
     loadCliDotEnv({ quiet: true });
   }
 
-  // ③ 标准化环境变量
+  // ② 再次标准化环境变量（.env 可能引入了新变量）
   normalizeEnv();
 
-  // ④ 确保 CLI 在 PATH 上（部分命令跳过以提速）
+  // ③ 确保 openclaw 在 PATH 上（只读命令跳过以提速）
   if (shouldEnsureCliPath(normalizedArgv)) {
     ensureOpenClawCliOnPath();
   }
 
-  // ⑤ 检查运行时版本
+  // ④ 检查 Node.js 版本是否满足最低要求
   assertSupportedRuntime();
 
-  // ⑥ 启动代理（如果需要）
+  // ⑤ 启动代理（如果命令需要网络访问）
   if (shouldStartProxyForCli(normalizedArgv)) {
+    const config = await readBestEffortConfig();
     proxyHandle = await startProxy(config?.proxy);
   }
 
-  // ⑦ 快路径判断 — 根帮助
-  if (shouldUseRootHelpFastPath(normalizedArgv)) { ... return; }
+  // ═══════════════════════════════════════════
+  // 第三部分：路径分发（四层快路径 + 慢路径）
+  // ═══════════════════════════════════════════
 
-  // ⑧ 快路径判断 — 浏览器帮助
-  if (shouldUseBrowserHelpFastPath(normalizedArgv)) { ... return; }
+  try {
+    // 快路径 1：根帮助
+    if (shouldUseRootHelpFastPath(normalizedArgv)) { ... return; }
 
-  // ⑨ 快路径判断 — Gateway run
-  if (await tryRunGatewayRunFastPath(normalizedArgv, trace)) { return; }
+    // 快路径 2：浏览器帮助
+    if (shouldUseBrowserHelpFastPath(normalizedArgv)) { ... return; }
 
-  // ⑩ 快路径判断 — 路由快通道
-  const { tryRouteCli } = await import("./route.js");
-  if (await tryRouteCli(normalizedArgv)) { return; }
+    // 快路径 3：Crestodian（交互式助手）
+    if (shouldRunBareRootCrestodian || shouldRunModernOnboardCrestodian) { ... return; }
 
-  // ⑪ 慢路径 — 构建 Commander 程序
-  const { buildProgram } = await import("./program.js");
-  const program = await buildProgram();
-  await program.parseAsync(parseArgv);
+    // 快路径 4：Gateway run（最常用的 gateway 启动命令）
+    if (await tryRunGatewayRunFastPath(normalizedArgv, trace)) { return; }
+
+    // 快路径 5：路由快通道（status/health/models 等）
+    const { tryRouteCli } = await import("./route.js");
+    if (await tryRouteCli(normalizedArgv)) { return; }
+
+    // 慢路径：构建完整 Commander 程序
+    const { buildProgram } = await import("./program.js");
+    const program = await buildProgram();
+    await program.parseAsync(parseArgv);
+  } finally {
+    // 清理：停止代理、关闭内存管理器
+    await stopStartedProxy();
+    await closeCliMemoryManagers();
+  }
 }
 ```
 
