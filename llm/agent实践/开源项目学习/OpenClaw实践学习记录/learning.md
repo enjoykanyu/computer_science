@@ -118,6 +118,65 @@ Channel Extension，不需要改动 Gateway 或 Agent Runner 的任何代码。
 作用：作为门卫校验权限，进行功能转发，再回传结论
 网关层架构
 ![img.png](resource/网关.png)
+
+### cli
+首先思考下当用户输入 openclaw status，进行了哪些步骤呢？
+
+![cli.png](resource/cli.png)
+会逐步进入 entry.ts、run-main.ts、route.ts、build-program.ts等文件
+接下来看看源码到底咋实现的
+##### entry函数
+首先entry函数做的事情很多
+- 1，守卫检查 — isMainModule() 确认自己是主入口，不是被别的模块 import 进来的。这防止了打包工具导致的"重复启动"问题。
+- 2，设置进程名 — process.title = "openclaw"，让 ps aux 能看到漂亮的名字，而不是一长串 node 路径。
+- 3，环境清理 — 三个关键操作：
+  - ensureOpenClawExecMarkerOnProcess() 标记进程身份 
+  - installProcessWarningFilter() 过滤 Node 实验性警告
+  - normalizeEnv() 标准化环境变量
+- 4，编译缓存 — enableOpenClawCompileCache() 启用 V8 编译缓存，加速后续启动。
+- 5，自我重生 (Respawn) — ensureCliRespawnReady() 检查是否需要"重启自己"。如果缺少 --disable-warning=ExperimentalWarning 或需要注入 NODE_EXTRA_CA_CERTS，就会 spawn 一个子进程来替代自己！
+
+entry核心函数内容
+```python
+// 守卫：只有当本文件是主模块时才执行
+if (!isMainModule({ currentFile, wrapperEntryPairs })) {
+  // 被其他模块 import 了，跳过所有入口逻辑
+} else {
+  // 1️⃣ 进程名
+  process.title = "openclaw";
+
+  // 2️⃣ 环境清理三件套
+  ensureOpenClawExecMarkerOnProcess();
+  installProcessWarningFilter();
+  normalizeEnv();
+
+  // 3️⃣ 编译缓存
+  enableOpenClawCompileCache({ installRoot });
+
+  // 4️⃣ --no-color 处理
+  if (process.argv.includes("--no-color")) {
+    process.env.NO_COLOR = "1";
+    process.env.FORCE_COLOR = "0";
+  }
+
+  // 5️⃣ 自我重生（如果需要的话）
+  if (!ensureCliRespawnReady()) {
+    // 不需要重生，继续正常流程
+    if (!tryHandleRootVersionFastPath(process.argv)) {
+      await runMainOrRootHelp(process.argv);
+    }
+  }
+}
+```
+- 1,设置当前的进程名字为 "openclaw"
+- 2,调用环境清理函数
+  - 在 CLI 真正开始干活之前，先把进程环境收拾干净，避免后续代码被环境问题干扰
+    
+
+- 3，编译缓存
+- 4，--no-color 处理
+- 5，自我重生ensureCliRespawnReady
+
 ### 认证与授权
 
 
