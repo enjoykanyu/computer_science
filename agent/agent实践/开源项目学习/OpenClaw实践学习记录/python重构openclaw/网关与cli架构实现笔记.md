@@ -1,6 +1,8 @@
 # 目标
 用python 实现openclaw的gateway网关和cli架构
-
+- 思考：在cli敲下：openclaw gateway run会发生啥呢
+- 回答：在这简单的一行命令背后，6 个文件、5 层关卡、10 个启动阶段正在接力工作。就像一个精密的接力赛——每一棒都有明确的职责，任何一棒掉了，整个系统就无法启动。
+- 同时在执行-help指令的时候会进入快速通道（fast path），毫秒级响应
 
 ### Cli与启动类复刻
 ![img.png](img.png)
