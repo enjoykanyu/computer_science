@@ -24,3 +24,9 @@ double test333 (double a, double b) {
 
 改成这样就行了
 在这之前声明下原型（作用提前告诉编译器函数会在下边出现）
+
+# 流式输出
+![img_11.png](img_11.png)
+这里看起来有点难懂，可以类比Java的system.out.println
+双小于号就是所谓的流插入
+最后的endl是换行插入符号，类比于Java的\n
