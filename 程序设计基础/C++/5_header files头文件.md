@@ -74,3 +74,12 @@ struct testValue
 <>指的是从include指定目录去拉去文件引入
 ""指的是从当前的相对目录去引入文件
 当然""同样可以在编译器指定目录去引入文件 但编译器指定目录引用通常用<>
+
+### <iostream>
+为啥iostream没有.h后缀
+这个是C++有意设计的区分C语言的头文件后缀
+![iostream源码.png](static/iostream源码.png)
+可以点进去看到iostream的源码
+点击显示文件目录地址
+![iostream普通文件.png](static/iostream普通文件.png)
+可以看到没有文件后缀 就是一个普通的文件
