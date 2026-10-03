@@ -40,7 +40,7 @@ int main()
 }
 ```
 build程序
-![img_15.png](pragma%20once为定义导致多次引入报错.png)
+![pragma%20once为定义导致多次引入报错.png](pragma%20once为定义导致多次引入报错.png)
 
 当取消注释pragma once
 ```cpp
@@ -53,3 +53,16 @@ struct testValue
 ```
 
 可以看到build不报错了
+
+### ifndef
+```cpp
+#ifndef _LOG_H
+#define _LOG_H
+void Log(const char* Message);
+struct testValue
+{
+    /* data */
+};
+#endif
+```
+这里的ifndef含义是假设存在_LOG_H未定义则程序将继续执行，如下内容将会被纳入编译单元
