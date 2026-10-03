@@ -66,3 +66,6 @@ struct testValue
 #endif
 ```
 这里的ifndef含义是假设存在_LOG_H未定义则程序将继续执行，如下内容将会被纳入编译单元
+
+![ifndef验证.png](static/ifndef验证.png)
+验证下：将头文件内容重复复制到math函数中，会发现第一次内容正常，第二次的内容置灰了，因为log.h定义过了，这个是头文件保护机制
