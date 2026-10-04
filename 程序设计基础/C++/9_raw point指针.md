@@ -70,3 +70,24 @@ int main()
 ```
 memset 分配内存
 delete 清理内存
+
+### 双指针
+指针同样有存储在内存，即指向指针的指针等
+```cpp
+#include <iostream>
+
+
+int main()
+{
+    int var = 8;
+    int* ptr = &var;
+    char * value = new char[8];
+    memset(value,0,8);
+    int** pointvalue = &ptr;
+    std::cout<< ptr <<std::endl;
+    std::cout<< pointvalue <<std::endl;
+    delete[] value;
+    std::cin.get();
+}
+```
+![指向指针的指针(双指针).png](指向指针的指针(双指针).png)
