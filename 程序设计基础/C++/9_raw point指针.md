@@ -55,3 +55,18 @@ int main()
 ```
 ![void指针修改成int成功修改数据.png](void指针修改成int成功修改数据.png)
 将它重新执行看到数据修改成了10
+
+### 分配内存
+memset
+```cpp
+#include <iostream>
+int main()
+{
+    char * value = new char[8];
+    memset(value,0,8);
+    delete[] value;
+    std::cin.get();
+}
+```
+memset 分配内存
+delete 清理内存
