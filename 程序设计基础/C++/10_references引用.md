@@ -58,3 +58,23 @@ int main()
 ```
 可以看到value修改成了9
 注意(*value)++ 数据运算符有优先级，不可写成 *value++ 这样的话是将地址+1再解引用了
+
+- 引用传递
+```cpp
+#include <iostream>
+
+void Increment(int& value){
+
+    value++;
+}
+
+int main()
+{
+    int value = 8;
+    Increment(value);
+    std::cout<< value <<std::endl;
+    std::cin.get();
+}
+```
+这样引用传递比传递指针更简洁
+引用可以做到的事情指针可以做到，但引用更加简洁，得依据实际情况去使用
