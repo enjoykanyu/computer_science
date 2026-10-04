@@ -82,3 +82,26 @@ int main()
 注意事项：当ref引用已赋值，不可再次赋值，引用指向的变量无法修改了
 同时声明引用务必得赋初始值，同时注意这个引用不是一个变量
 
+- 修改引用的指向
+```cpp
+#include <iostream>
+
+void Increment(int& value){
+
+    value++;
+}
+
+int main()
+{
+    int a = 8;
+    int b = 9;
+    int* ref = &a;
+    *ref = 9;
+    ref = &b;
+    *ref = 8;
+    std::cout<< a <<std::endl;
+    std::cout<< b <<std::endl;
+    std::cin.get();
+}
+```
+注意给指针赋值得解引用
