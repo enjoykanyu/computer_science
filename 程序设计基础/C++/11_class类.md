@@ -20,3 +20,25 @@ int main()
 }
 ```
 像这样和Java差不多定义一个类和成员变量
+![私有成员变量访问报错.png](static/私有成员变量访问报错.png)
+可以看到编译报错了
+因为class的成员有可见设置
+私有变量外部不可访问，只有类内部的成员才可以访问，和Java差不多
+这里得将内部变量设置为public 外部才可以访问到
+```cpp
+#include <iostream>
+
+class Player{
+
+public:
+    int x,y;
+    int speed;
+};
+int main()
+{
+    Player player;
+    player.x = 9;
+    std::cin.get();
+}
+```
+这样就不会报错了
