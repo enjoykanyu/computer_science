@@ -41,7 +41,7 @@ int s_Variable = 9;
 ```
 这里编译可以通过且s_Variable打印数值为9，可以通过外部去寻找变量
 但当外部的文件增加static修饰则会报错找不到
-![img_15.png](img_15.png)
+![static修饰找不到外部变量.png](static/static修饰找不到外部变量.png)
 
 - 修饰函数
 ```cpp
@@ -67,5 +67,5 @@ void Function()
 
 }
 ```
-![img_16.png](img_16.png)
+![img_16.png](修饰函数定义多个函数报错.png)
 注意：当无需在各个编译单元中共享某个变量或者函数的时候务必使用static进行修饰，不然会在链接linking阶段报错
