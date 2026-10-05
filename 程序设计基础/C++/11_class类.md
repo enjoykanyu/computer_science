@@ -64,3 +64,27 @@ int main()
     std::cin.get();
 }
 ```
+
+- 改造成类内部函数，称之为方法
+```cpp
+#include <iostream>
+
+class Player{
+
+public:
+    int x,y;
+    int speed;
+    void Move(int xa,int ya){
+        x += xa*speed;
+        y += ya*speed;
+    }
+};
+
+int main()
+{
+    Player player;
+    player.Move(3,3);
+    std::cin.get();
+}
+```
+这样代码可以简洁很多，当然不用这样改造同样可以完成功能，就像C语言那样，这样为了方便程序员简洁直观
