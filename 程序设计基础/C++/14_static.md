@@ -42,6 +42,32 @@ int s_Variable = 9;
 这里编译可以通过且s_Variable打印数值为9，可以通过外部去寻找变量
 但当外部的文件增加static修饰则会报错找不到
 ![img_15.png](img_15.png)
+
+- 修饰函数
+```cpp
+#include <iostream>
+
+// extern int s_Variable;
+// static int s_Variable = 9;
+void Function()
+{
+
+}
+int main()
+{
+    // std::cout << s_Variable << std::endl;
+    std::cin.get();
+}
+```
+外部文件定义
+```cpp
+// static int s_Variable = 9;
+void Function()
+{
+
+}
+```
+![img_16.png](img_16.png)
 ### 类或者结构体内部使用static
 修饰内部变量和方法的时候，被类的所有实例共享同一个静态变量
 
