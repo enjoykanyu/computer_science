@@ -83,3 +83,36 @@ int main()
 ![img_17.png](img_17.png)
 可以看到报错外部链接解析错误找不到x和y
 这里可以和之前的链接阶段得定义函数声明来看，x和y被static修饰了，因此外部函数看不到它，因此得单独声明下x和y
+
+```cpp
+#include <iostream>
+
+struct Entity{
+
+    static int x,y;
+    void Print(){
+        std::cout << x<< ","<<y << std::endl;
+    }
+};
+
+int Entity::x;
+int Entity::y;
+int main()
+{
+    Entity e;
+    e.x = 3;
+    e.y = 10;
+    Entity e1;
+    e1.x = 10;
+    e1.y = 3;
+    e.Print();
+    e1.Print();
+    std::cin.get();
+}
+```
+
+int Entity::x;
+int Entity::y;
+单独声明了之后发现build打印了两个10，3
+![img_18.png](img_18.png)
+这个是因为static修饰的静态变量全局只会共享一个，可以理解为定义了多个entity，相当于指向的都是同一个数据，多个定义的指针地址都是相同的
