@@ -20,4 +20,4 @@ cout << v.back()  << '\n';
 ```
 
 输出
-![img_5.png](img_5.png)
+![vector.png](static/vector.png)

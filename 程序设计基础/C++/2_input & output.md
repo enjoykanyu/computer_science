@@ -13,4 +13,4 @@ int main () {
 ```
 
 输出
-![img_1.png](img_1.png)
+![img_1.png](static/IO打印.png)

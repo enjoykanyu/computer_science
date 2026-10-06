@@ -38,7 +38,7 @@ int main()
 }
 ```
 *ptr 将指针原本指向的数据修改成了10 但是会发现报错
-![void指针修改报错.png](void指针修改报错.png)
+![void指针修改报错.png](static/void指针修改报错.png)
 这个是因为指针类型为void类型 它不知道这个字节数量到底是多少，因此这里类型就发挥了重大作用，指定修改指针的类型为int类型
 ```cpp
 #include <iostream>
@@ -53,7 +53,7 @@ int main()
     std::cin.get();
 }
 ```
-![void指针修改成int成功修改数据.png](void指针修改成int成功修改数据.png)
+![void指针修改成int成功修改数据.png](static/void指针修改成int成功修改数据.png)
 将它重新执行看到数据修改成了10
 
 ### 分配内存

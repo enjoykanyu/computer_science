@@ -9,7 +9,7 @@ int main() {
 
 输出
 
-![img.png](img.png)
+![helloworld打印.png](static/helloworld打印.png)
 
 
 

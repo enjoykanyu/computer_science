@@ -15,7 +15,7 @@ int main(int argc, char const *argv[])
 }
 
 ```
-![img_20.png](img_20.png)
+![枚举递增赋值.png](static/枚举递增赋值.png)
 可以看到C被递增赋予了2
 
 类型可以设置枚举存储类型unsigned char 占1个字节，同样可以不设置
@@ -37,7 +37,7 @@ int main(int argc, char const *argv[])
 
 ```
 枚举只可以存储整数
-![img_21.png](img_21.png)
+![枚举只可以存储整数.png](static/枚举只可以存储整数.png)
 当设置为float可以看到编译报错了
 
 ### 改造之前的Log函数
