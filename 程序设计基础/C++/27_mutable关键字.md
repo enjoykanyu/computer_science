@@ -187,3 +187,14 @@ public:
     }
 };
 ```
+- 注意事项
+```cpp
+int x = 8;
+auto f = [=]() mutable {
+    x++;
+    std::cout << "Inside: " << x << std::endl; // 输出 9
+};
+f();
+std::cout << "Outside: " << x << std::endl;     // 输出仍为 8
+```
+mutable 允许修改的仅仅是 Lambda 内部保存的那份副本，外部原本的 int x 不会受到任何影响：
