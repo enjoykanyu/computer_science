@@ -1,0 +1,1 @@
+string和Java差不多
