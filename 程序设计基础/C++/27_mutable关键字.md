@@ -121,3 +121,69 @@ int mian(){
 可以看到编译器完全不报错了
 
 mutable关键字修饰符相当于类内部的 const 方法实际上能够修改这个成员
+
+### 配合lambda表达式
+```cpp
+#include<iostream>
+class Entity
+{
+private:
+    std::string m_Name;
+    mutable int debugCount = 0;
+public:
+    const std::string& GetName() const
+    {
+        debugCount++;
+        return m_Name;
+    }
+};
+
+int mian(){
+
+    const Entity e;
+    e.GetName();
+    int x = 8;
+    auto f = [=]() mutable//按值传递的
+    {
+        x++;
+        std::cout << x<< std::endl;
+    }
+    
+    std::cin.get();
+}
+```
+int x = 8;
+auto f = [=]() {
+x++; // 编译报错
+};
+原因是C++ 编译器会在底层为你生成一个匿名的类（闭包类），大致等价于：
+```cpp
+class __Lambda_1 {
+private:
+    int x; // 按值捕获，x 变成了闭包类的成员变量
+
+public:
+    __Lambda_1(int val) : x(val) {}
+
+    // 关键点：默认情况下，operator() 带有 const 修饰！
+    void operator()() const {
+        x++; // 报错！在 const 成员函数内部，不能修改成员变量
+    }
+};
+```
+
+加了mutable
+```cpp
+class __Lambda_1 {
+private:
+    int x;
+
+public:
+    __Lambda_1(int val) : x(val) {}
+
+    // 加了 mutable 后，operator() 变成了普通的非 const 成员函数
+    void operator()() {
+        x++; // 合法，可以修改内部成员变量 x
+    }
+};
+```
