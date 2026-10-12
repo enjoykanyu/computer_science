@@ -17,3 +17,10 @@ Entity* e = new Entity();       // 堆上分配 Entity，并调用默认构造�
 int* arr = new int[50];         // 分配 50 * 4 = 200 字节连续内存
 Entity* eArr = new Entity[50];  // 分配连续内存，并依次调用 50 次默认构造函数
 ```
+
+### new 与 malloc 的根本区别（核心概念）
+- new 本质上是一个运算符（Operator），底层通常调用 operator new 函数（其默认实现往往基于 C 标准库的 malloc）。
+- 关键差异：
+  - malloc(sizeof(Entity))：纯粹在堆上划出一块未初始化的原始内存（返回 void*），绝对不会调用构造函数。
+  - new Entity()：不仅分配内存，还会显式触发对象的构造函数完成对象初始化，且具备类型安全性（直接返回强类型的 Entity*，无需像 C 那样强转）
+  
