@@ -41,7 +41,7 @@ int mian(){
 }
 ```
 会发现报错了
-![常量类调用非常量函数报错.png](常量类调用非常量函数报错.png)
+![常量类调用非常量函数报错.png](static/常量类调用非常量函数报错.png)
 这里是因为限制了const类对象与const函数的调用关系，指的是常量函数和类 不可变 const类不可调用非const函数
 
 ### mutable
@@ -69,7 +69,7 @@ int mian(){
 ```
 const函数指的是常量函数，但有的时候会出于调试目的想看某个const常量函数调用的次数，因此会在函数中定义类似于debugCount进行计数操作
 但会看到编译器报错了
-![常量函数变量修改报错.png](常量函数变量修改报错.png)
+![常量函数变量修改报错.png](static/常量函数变量修改报错.png)
 ```cpp
 #include<iostream>
 class Entity
@@ -94,7 +94,7 @@ int mian(){
 ```
 
 将const从函数中移除又可以看到编译器不报错了，但是类对象调用又报错了
-![移除const类对象调用报错.png](移除const类对象调用报错.png)
+![移除const类对象调用报错.png](static/移除const类对象调用报错.png)
 很矛盾，这时候mutable关键字可以解决这个问题
 ```cpp
 #include<iostream>
