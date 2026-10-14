@@ -39,3 +39,13 @@ this->y = y;
 ```cpp
 (*this).x = x;
 ```
+
+![this底层.png](static/this底层.png)
+在非 const 成员函数中，如果你把鼠标悬停在 this 上，它的完整类型其实是：
+```cpp
+Entity* const this; // 顶层 const（Top-level const）
+```
+
+```cpp
+- this = nullptr; // ❌ 编译直接报错！不能给 this 赋新地址
+```
