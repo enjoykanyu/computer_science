@@ -16,3 +16,26 @@ e.Print();
 void Entity_Print(Entity* const this); // 隐藏的第一个参数
 Entity_Print(&e);                       // 将当前对象地址传给 this（通常放在 ECX 寄存器或 RDI 寄存器中）
 ```
+
+### 变量重名消歧义
+```cpp
+class Entity {
+public:
+    int x, y;
+
+    Entity(int x, int y) {
+        // 如果想在构造函数体内赋值：
+        x = x; // ❌ 编译可以通过，但毫无意义！只是局部形参 x 给自己赋值
+    }
+};
+```
+借助this
+this 是指向当前实例的指针，所以可以通过指针访问成员：
+```cpp
+this->x = x;
+this->y = y;
+```
+解引用用法
+```cpp
+(*this).x = x;
+```
