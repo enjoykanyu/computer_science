@@ -49,3 +49,22 @@ Entity* const this; // 顶层 const（Top-level const）
 ```cpp
 - this = nullptr; // ❌ 编译直接报错！不能给 this 赋新地址
 ```
+
+### 只读函数this
+```cpp
+class Entity {
+public:
+    int x, y;
+
+    int GetX() const {
+        // 这里的 this 究竟是什么类型？
+        // 悬停会发现是：const Entity* const
+        return this->x;
+        // return x; // 等价于 return this->x;
+    }
+};
+```
+![const函数this为const修饰类.png](static/const函数this为const修饰类.png)
+当this->x=9会报错
+![const函数this-%3Ex禁止修改数据.png](const函数this-%3Ex禁止修改数据.png)
+因为是指向 const Entity 的指针，所以只要你尝试在函数内写 this->x = 5;，编译器直接判定为非法修改常量
