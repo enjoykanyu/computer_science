@@ -68,3 +68,23 @@ public:
 当this->x=9会报错
 ![const函数this-%3Ex禁止修改数据.png](const函数this-%3Ex禁止修改数据.png)
 因为是指向 const Entity 的指针，所以只要你尝试在函数内写 this->x = 5;，编译器直接判定为非法修改常量
+
+### 在类内部把自己传递给外部函数
+```cpp
+class Entity {
+public:
+    int x, y;
+
+    void Print() const {
+        // 如何把“当前对象”传给外部函数？
+        PrintEntity(*this); //  对 this 指针解引用！
+    }
+};
+
+void PrintEntity(const Entity& e) {
+    // 具体的打印逻辑...
+}
+```
+- 对指针进行解引用 *this，即可得到当前对象的实体/引用（Reference）；
+- 如果当前处于非 const 成员函数中，*this 得到的是 Entity&（普通引用）；
+- 如果当前处于 const 成员函数中，*this 得到的是 const Entity&（常量引用），完美匹配外部函数的接收参数。
