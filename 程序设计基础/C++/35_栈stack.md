@@ -17,3 +17,23 @@ public:
     }
 };
 ```
+
+### 栈分配
+```cpp
+int main() {
+    {
+        Entity e; // 栈上分配
+    } // 离开花括号，离开作用域
+    std::cin.get();
+}
+```
+
+### 堆分配
+```cpp
+int main() {
+    {
+        Entity* e = new Entity(); // 堆上分配
+    } // 离开作用域，仅指针变量 e 本身销毁，所指堆内存未释放！
+    std::cin.get();
+}
+```
