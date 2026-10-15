@@ -37,3 +37,22 @@ int main() {
     std::cin.get();
 }
 ```
+
+### 错误用法
+
+```cpp
+// 危险错误示范：
+int* CreateArray() {
+    int array[50]; // 分配在当前函数的栈帧上
+    // ... 对 array 进行填充 ...
+    return array;  // ❌ 致命错误！返回局部栈数组的首地址
+}
+
+int main() {
+    int* a = CreateArray();
+    // 此时 a 已经是指向死尸内存的悬挂指针（Dangling Pointer）！
+}
+```
+一旦 CreateArray() 函数执行完毕返回，该函数对应的整个栈帧（那本书）被彻底弹出、作废。返回的指针所指向的内存随时会被后续其他函数调用或系统操作无情覆盖
+
+若想在函数外继续使用这块内存，必须使用堆分配：int* array = new int[50];，或者通过传出参数从外界传入已分配的栈引用
