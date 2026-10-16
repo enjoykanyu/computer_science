@@ -89,3 +89,28 @@ int main() {
 }
 ```
 ![释放内存.png](static/释放内存.png)
+
+### 作用域机制的
+
+- 作用域计时器
+```cpp
+struct Timer {
+    std::chrono::time_point<std::chrono::high_resolution_clock> start;
+    Timer() {
+        start = std::chrono::high_resolution_clock::now();
+    }
+    ~Timer() {
+        auto end = std::chrono::high_resolution_clock::now();
+        // 在析构时自动打印耗时！
+        std::cout << "Elapsed: " << (end - start).count() << "ms\n";
+    }
+};
+
+void ComplexFunction() {
+    Timer timer; // 仅仅在函数开头写一行！
+    // 哪怕函数有 100 行，哪怕有多个 return，离开该作用域时自动打印耗时！
+}
+```
+
+- 作用域锁（Scoped Lock / 互斥锁自动管理）
+  使用标准库的 std::lock_guard 或 std::unique_lock，在构造时加锁，离开任何包含花括号的作用域时在析构函数中自动解锁
