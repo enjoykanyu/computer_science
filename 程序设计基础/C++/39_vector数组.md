@@ -16,3 +16,31 @@ std::vector 是 C++ 标准模板库（STL）中被使用最频繁的容器。它
 ### 容量（Capacity）和大小（Size）的区别：
 - size()：当前数组中实际存放了多少个有效元素；
 - capacity()：当前底层堆内存最多能容纳多少个元素而无需再次重新分配
+
+```cpp
+#include <iostream>
+#include <vector>
+
+struct Vertex {
+    float x, y, z;
+};
+
+// 重载输出运算符方便打印
+std::ostream& operator<<(std::ostream& stream, const Vertex& vertex) {
+    stream << vertex.x << ", " << vertex.y << ", " << vertex.z;
+    return stream;
+}
+```
+在 vector 中，到底应该存对象本身还是存对象的指针？
+即：std::vector<Vertex> vs std::vector<Vertex*>？
+
+选择 std::vector<Vertex>（直接存对象，强烈推荐首选）：
+- 内存连续性（Contiguous Memory）：所有 Vertex 在内存中一个接一个紧密排列（xyz xyz xyz...）。
+- CPU 缓存行友好（Cache Friendly）：现代 CPU 每次从内存读取数据都是以 Cache Line（通常 64 字节）为单位。内存连续意味着 CPU 一次缓存命中就能读取多个相邻顶点，遍历读取性能极其恐怖！
+
+选择 std::vector<Vertex*>（存堆指针）：
+- 指针本身是连续的，但指针所指向的实际数据分散在堆内存的不同角落（内存碎片化）。CPU 在遍历时会不断遭遇缓存不命中（Cache Miss），频繁向慢速主存寻址，速度大幅暴跌。
+
+指针唯一的优势： 如果存储的对象体积极其庞大且拷贝开销极高，扩容搬家时拷贝 8 字节的指针确实比拷贝大对象更快。
+
+黄金准则： 只要条件允许，永远默认使用 std::vector<T> 直接存储对象，指针仅作特殊万不得已的备选
