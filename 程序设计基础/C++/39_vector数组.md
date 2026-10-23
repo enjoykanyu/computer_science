@@ -81,3 +81,12 @@ erase 不能直接传下标数字（如不能写 erase(1)），它强制接收�
 vertices.erase(vertices.begin() + 1);
 ```
 本质：vertices.begin() 是指向首元素的迭代器，通过 + 1 偏移到第 2 个元素位置完成移除
+
+### 函数传参铁律：永远传 const std::vector<T>&
+```cpp
+// 绝不能写 void Process(std::vector<Vertex> v)！
+void Process(const std::vector<Vertex>& v) {
+    // 零拷贝，高效安全
+}
+```
+不加引用，调用函数时会把内部几千几万个元素从堆上一股脑全部重新深拷贝一份，造成灾难级卡顿
