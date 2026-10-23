@@ -44,3 +44,40 @@ std::ostream& operator<<(std::ostream& stream, const Vertex& vertex) {
 指针唯一的优势： 如果存储的对象体积极其庞大且拷贝开销极高，扩容搬家时拷贝 8 字节的指针确实比拷贝大对象更快。
 
 黄金准则： 只要条件允许，永远默认使用 std::vector<T> 直接存储对象，指针仅作特殊万不得已的备选
+
+
+
+### API
+添加元素：push_back
+```cpp
+std::vector<Vertex> vertices;
+// C++11 统一列表初始化：
+vertices.push_back({ 1, 2, 3 });
+vertices.push_back({ 4, 5, 6 });
+```
+遍历元素：下标法 vs 基于范围的 for 循环
+- 传统下标法：
+```cpp
+for (size_t i = 0; i < vertices.size(); i++) {
+    std::cout << vertices[i] << std::endl; // 重载了 operator[]，支持随机访问
+}
+```
+- 基于范围的 for 循环与致命拷贝陷阱：
+```cpp
+// 错误示范：按值传递，每一个元素都会在遍历时触发一次完整的拷贝构造！
+for (Vertex v : vertices)
+    std::cout << v << std::endl;
+
+//  正确做法：必须带上引用符号 &，只读时加上 const！
+for (const Vertex& v : vertices)
+    std::cout << v << std::endl;
+```
+元素移除：clear 与 erase
+- 全量清空：vertices.clear(); 将有效大小（Size）置为 0，但底层的连续内存（Capacity）并不会释放给操作系统。
+- 按位置删除（erase 与迭代器 Iterator）：
+erase 不能直接传下标数字（如不能写 erase(1)），它强制接收一个迭代器（Iterator）
+```cpp
+// 删除第 2 个元素（索引为 1 的位置）：
+vertices.erase(vertices.begin() + 1);
+```
+本质：vertices.begin() 是指向首元素的迭代器，通过 + 1 偏移到第 2 个元素位置完成移除
