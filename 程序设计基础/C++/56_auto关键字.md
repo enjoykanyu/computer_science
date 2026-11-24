@@ -34,3 +34,24 @@ auto value = 10;
 ```cpp
 int value = 10;
 ```
+### 字面量的影响
+```cpp
+auto a = 5;      // int
+auto b = 5L;     // long
+auto c = 5.5f;   // float
+auto d = 5.5;    // double
+auto e = "Cherno"; // const char*
+```
+
+```cpp
+auto text = "Cherno";
+```
+推导出来不是 std::string，而是const char*
+
+需要标准字符串：
+```cpp
+auto text = std::string("Cherno");
+// 推导为 std::string
+或者
+std::string text = "Cherno";
+```
