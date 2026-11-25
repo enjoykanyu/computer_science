@@ -55,3 +55,25 @@ auto text = std::string("Cherno");
 或者
 std::string text = "Cherno";
 ```
+
+### auto不会让C++变成弱类型语言
+代码中不再显式写出类型：
+```cpp
+auto value = 5;
+```
+但 value 仍然具有确定类型：
+```cpp
+value = 10;       // 合法
+value = "Hello";  // 错误，不能把字符串赋给 int
+```
+因此 auto 只是省略类型名称，不能改变 C++ 的静态类型系统。
+
+下面代码不是“同一个变量类型动态改变”：
+```cpp
+auto value = 5;
+```
+它只能是 int。如果改成：
+```cpp
+auto value = "Hello";
+```
+这是重新编译后生成了另一个 const char* 变量
