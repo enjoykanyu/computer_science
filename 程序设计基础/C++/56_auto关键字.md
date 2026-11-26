@@ -77,3 +77,34 @@ auto value = 5;
 auto value = "Hello";
 ```
 这是重新编译后生成了另一个 const char* 变量
+
+
+### auto的优点：修改初始化表达式时不必修改左侧类型
+```cpp
+auto value = 5;
+```
+改成
+```cpp
+auto value = 5.5f;
+```
+左侧仍然是
+```cpp
+auto value
+```
+只不过推导结果由 int 变成了 float。
+
+这可以减少代码修改量，但也带来风险：右侧表达式类型改变后，左侧变量类型会悄悄改变。
+
+例如：
+```cpp
+auto value = GetValue();
+```
+GetValue() 的返回类型从 int 改为 double，value 也会自动从 int 变为 double。
+
+这可能导致：
+- sizeof(value) 结果变化；
+- 序列化格式变化；
+- 重载函数选择变化；
+- 精度和性能变化；
+- 后续代码行为改变。
+  所以 auto 带来的便利与隐藏变化是同时存在的
