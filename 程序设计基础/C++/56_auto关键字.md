@@ -108,3 +108,73 @@ GetValue() 的返回类型从 int 改为 double，value 也会自动从 int 变�
 - 精度和性能变化；
 - 后续代码行为改变。
   所以 auto 带来的便利与隐藏变化是同时存在的
+  
+
+
+
+### auto的两面性
+```cpp
+std::string GetName()
+{
+    return "Cherno";
+}
+std::string name = GetName();
+auto name = GetName();
+```
+
+name 的类型是 std::string
+两种写法功能相同
+
+API 返回类型发生变化
+将函数改为
+```cpp
+const char* GetName()
+{
+    return "Cherno";
+}
+```
+则
+```cpp
+auto name = GetName();
+```
+推导为
+```cpp
+const char* name;
+```
+此时下面代码不再成立：
+```cpp
+name.size(); // 错误，const char* 没有 size()
+```
+
+写成：
+```cpp
+std::string name = GetName();
+```
+则由于 std::string 可以从 C 字符串构造，仍然可能正常工作：
+```cpp
+std::string name = GetName();
+name.size(); // 合法
+```
+体现了auto的两面：
+- auto的优点：API 返回类型变化时，调用处不需要同步修改：
+```cpp
+auto name = GetName();
+```
+auto 的风险
+调用者可能没有意识到变量类型已经改变，导致后续行为变化。
+
+例如：
+```cpp
+auto name = GetName();
+std::cout << sizeof(name) << std::endl;
+```
+如果返回 std::string，sizeof(name) 是字符串对象大小；如果返回 const char*，则通常是指针大小。这种变化可能破坏二进制协议、序列化或内存布局。
+
+因此，若变量必须明确表示某种语义类型，建议写：
+```cpp
+std::string name = GetName();
+```
+而不是
+```cpp
+auto name = GetName();
+```
