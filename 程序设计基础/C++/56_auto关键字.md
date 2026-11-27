@@ -178,3 +178,33 @@ std::string name = GetName();
 ```cpp
 auto name = GetName();
 ```
+
+### 不建议在简单类型上滥用auto
+不建议这样写
+```cpp
+auto count = 10;
+auto name = std::string("Cherno");
+auto speed = 3.5f;
+```
+
+这些类型从初始化表达式中很容易看出，写成显式类型通常更清楚：
+```cpp
+int count = 10;
+std::string name = "Cherno";
+float speed = 3.5f;
+```
+因为读者可以直接知道：
+```cpp
+count 是 int
+name 是 std::string
+speed 是 float
+```
+而看到
+```cpp
+auto name = GetName();
+```
+读者必须：
+- 查看 IDE 提示；
+- 跳转到函数定义；
+- 查看头文件声明；
+- 分析模板返回类型
