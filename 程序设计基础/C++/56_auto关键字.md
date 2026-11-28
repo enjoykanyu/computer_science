@@ -275,3 +275,32 @@ for (auto string : strings)
 for (auto& string : strings)
 ```
 这里 auto 与 &、`const` 的组合决定了是否发生拷贝以及是否允许修改
+
+### 复杂容器类型
+```cpp
+#include <string>
+#include <vector>
+#include <unordered_map>
+
+class Device
+{
+};
+
+class DeviceManager
+{
+private:
+    std::unordered_map<
+        std::string,
+        std::vector<Device*>
+    > m_Devices;
+
+public:
+    const std::unordered_map<
+        std::string,
+        std::vector<Device*>
+    >& GetDevices() const
+    {
+        return m_Devices;
+    }
+};
+```
