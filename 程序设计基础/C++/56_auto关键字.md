@@ -208,3 +208,70 @@ auto name = GetName();
 - 跳转到函数定义；
 - 查看头文件声明；
 - 分析模板返回类型
+### auto：迭代器
+
+```cpp
+#include <iostream>
+#include <string>
+#include <vector>
+
+int main()
+{
+    std::vector<std::string> strings;
+    strings.push_back("apple");
+    strings.push_back("orange");
+
+    for (
+        std::vector<std::string>::iterator it = strings.begin();
+        it != strings.end();
+        it++
+    )
+    {
+        std::cout << *it << std::endl;
+    }
+}
+```
+
+这里的迭代器类型：
+```cpp
+std::vector<std::string>::iterator
+```
+虽然准确，但非常长。
+
+使用 auto：
+```cpp
+for (
+    auto it = strings.begin();
+    it != strings.end();
+    it++
+)
+{
+    std::cout << *it << std::endl;
+}
+```
+strings.begin() 返回什么类型，`it` 就推导成什么类型。
+
+这不会隐藏重要的业务语义，因为这里真正重要的是：
+it 是 strings 的迭代器
+
+而不是完整展开迭代器的内部类型名称。
+现代 C++ 更常写范围 for：
+```cpp
+for (const auto& string : strings)
+{
+    std::cout << string << std::endl;
+}
+```
+不修改元素：
+```cpp
+for (const auto& string : strings)
+```
+需复制元素：
+```cpp
+for (auto string : strings)
+```
+需修改元素：
+```cpp
+for (auto& string : strings)
+```
+这里 auto 与 &、`const` 的组合决定了是否发生拷贝以及是否允许修改
